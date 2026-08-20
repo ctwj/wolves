@@ -17,6 +17,15 @@
     <SelectCategory v-model="record.parent_id" :disabled-id="record.id" />
   </a-form-item>
 
+  <a-form-item field="content_type" label="内容类型" extra="决定该分类页面的前台布局（视频=海报网格 / 小说=书籍列表 / 图片=缩略图画廊）">
+    <a-select v-model="record.content_type" placeholder="普通（默认）" allow-clear>
+      <a-option value="">普通</a-option>
+      <a-option value="novel">小说</a-option>
+      <a-option value="image">图片</a-option>
+      <a-option value="video">视频</a-option>
+    </a-select>
+  </a-form-item>
+
   <a-form-item field="title" :label="$t('title')">
     <a-input v-model="record.title" :max-length="250" allow-clear show-word-limit />
   </a-form-item>

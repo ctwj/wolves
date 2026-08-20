@@ -16,6 +16,7 @@ type Category struct {
 	Title       string `gorm:"type:varchar(250);default:''"              json:"title"`
 	Keywords    string `gorm:"type:varchar(250);default:''"              json:"keywords"`
 	Description string `gorm:"type:varchar(250);default:''"              json:"description"`
+	ContentType string `gorm:"type:varchar(20);default:''"               json:"content_type"` // 内容类型 空/standard:普通 novel:小说 image:图片 video:视频（决定分类页布局）
 }
 
 func (c *Category) FullURL() string {

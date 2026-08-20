@@ -1,0 +1,29 @@
+{{block categoryNovel(list)}}
+{* 小说分类布局：书籍条目列表（可选封面 + 书名 + 简介 + 更新时间） *}
+<div class="novel-list mb-8">
+    {{ range i, v := list }}
+    <a href="{{ v.URL() }}" class="novel-item">
+        <div class="novel-cover">
+            {{ if v.Thumbnail != "" }}
+            <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />
+            {{ else }}
+            <div class="novel-cover-placeholder">
+                <i class="fas fa-book" aria-hidden="true"></i>
+            </div>
+            {{ end }}
+        </div>
+        <div class="novel-detail">
+            <h3 class="novel-title">{{ v.Title }}</h3>
+            <p class="novel-desc">{{ v.Description }}</p>
+            <div class="novel-meta">
+                <span class="novel-meta-tag"><i class="fas fa-book-open mr-1" aria-hidden="true"></i>小说</span>
+                <span><i class="fas fa-calendar-alt mr-1" aria-hidden="true"></i>更新于 {{ v.CreateTimeFormat("2006-01-02") }}</span>
+            </div>
+        </div>
+        <div class="novel-action">
+            <span class="novel-read-btn">开始阅读<i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></span>
+        </div>
+    </a>
+    {{ end }}
+</div>
+{{end}}

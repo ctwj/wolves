@@ -28,6 +28,30 @@
       <SelectCategory v-model="record.category_id" :cascader-style="{backgroundColor:'var(--color-bg-5)'}" />
     </a-form-item>
 
+    <a-form-item field="content_type" label="内容类型" extra="决定文章详情页形态：视频=观看页（选集）、小说=阅读页（分章）、图片=图集浏览">
+      <a-select v-model="record.content_type" placeholder="普通（默认）" allow-clear>
+        <a-option value="">普通</a-option>
+        <a-option value="novel">小说</a-option>
+        <a-option value="image">图片</a-option>
+        <a-option value="video">视频</a-option>
+      </a-select>
+    </a-form-item>
+
+    <a-form-item v-if="record.content_type === 'video'" label="视频选集">
+      <VideoSourcesEditor v-model="videoSources" class="w-full" />
+    </a-form-item>
+
+    <a-form-item v-if="record.content_type === 'image'" label="图集图片">
+      <GalleryImagesEditor v-model="galleryImages" class="w-full" />
+    </a-form-item>
+
+    <a-form-item v-if="record.content_type === 'novel'" label="章节分隔">
+      <div class="text-gray-500 text-xs leading-6">
+        正文即小说全文；章节之间单独一行插入分隔符 <code class="px-1 py-0.5 rounded bg-gray-100">===chapter===</code>
+        （编辑器中直接作为文本输入，前台自动按章分页阅读）。每章开头建议使用标题（如"第X章 …"）作为章节名。
+      </div>
+    </a-form-item>
+
     <a-form-item :label="$t('tag')">
       <Tag />
     </a-form-item>
@@ -118,6 +142,8 @@
   import {computed, inject} from "vue";
   import UploadImgInput from '@/components/utils/UploadImgInput.vue'
   import Tag from "./com/Tag.vue"
+  import VideoSourcesEditor from "./com/VideoSourcesEditor.vue"
+  import GalleryImagesEditor from "./com/GalleryImagesEditor.vue"
   import {useStore} from "@/store/index.js";
   import {useOpenLink} from '@/hooks/utils.js'
   import {useAppendSiteURL} from "@/hooks/app/index.js";
@@ -127,6 +153,26 @@
   const record = inject('record')
   const createTime = computed(()=>record.value.create_time*1000)
   const store = useStore()
+
+  // ===== 多媒体类型专属数据：读写 extends 键（切换类型不清除已录入数据） =====
+  function getExtends(key) {
+    const item = (record.value.extends || []).find(e => e.key === key)
+    return item ? item.value : []
+  }
+  function setExtends(key, value) {
+    if (!record.value.extends) record.value.extends = []
+    const item = record.value.extends.find(e => e.key === key)
+    if (item) item.value = value
+    else record.value.extends.push({key, value})
+  }
+  const videoSources = computed({
+    get: () => getExtends('video_sources'),
+    set: (val) => setExtends('video_sources', val),
+  })
+  const galleryImages = computed({
+    get: () => getExtends('gallery_images'),
+    set: (val) => setExtends('gallery_images', val),
+  })
 
   function addExtends(){
     if(!record.value.extends) record.value.extends = []

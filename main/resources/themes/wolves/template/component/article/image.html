@@ -1,0 +1,72 @@
+{{block articleImage()}}
+{* 图片浏览页：图集全量网格 + 点击放大（原生灯箱，无外部库） *}
+<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+    {{ if len(Data.ImageList) > 0 }}
+    <div class="image-viewer-grid">
+        {{ range i, img := Data.ImageList }}
+        <button class="image-viewer-item" data-src="{{ img.URL }}" data-index="{{ i }}" title="第 {{ i + 1 }} 张，点击放大">
+            <img src="{{ img.URL }}" alt="{{ Data.Title }} 第 {{ i + 1 }} 张" loading="lazy" decoding="async" />
+            <span class="image-viewer-order">{{ i + 1 }}</span>
+        </button>
+        {{ end }}
+    </div>
+    {{ if Data.Content != "" }}
+    <div class="prose prose-lg max-w-none article-content mt-6 pt-6 border-t border-gray-100">
+        {{ Data.Content | raw }}
+    </div>
+    {{ end }}
+    {{ else }}
+    <div class="text-center py-12 text-gray-500">
+        <i class="fas fa-images text-4xl mb-4 text-gray-300"></i>
+        <p>暂无图片</p>
+    </div>
+    {{ end }}
+</div>
+
+{{ if len(Data.ImageList) > 0 }}
+<div class="lightbox" id="wolves-lightbox" hidden>
+    <button class="lightbox-close" aria-label="关闭">&times;</button>
+    <button class="lightbox-prev" aria-label="上一张"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+    <div class="lightbox-body">
+        <img src="" alt="" id="wolves-lightbox-img" />
+        <div class="lightbox-caption" id="wolves-lightbox-caption"></div>
+    </div>
+    <button class="lightbox-next" aria-label="下一张"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+</div>
+<script>
+(function () {
+    var items = [].slice.call(document.querySelectorAll('.image-viewer-item'));
+    if (!items.length) return;
+    var box = document.getElementById('wolves-lightbox');
+    var img = document.getElementById('wolves-lightbox-img');
+    var cap = document.getElementById('wolves-lightbox-caption');
+    var current = 0;
+    function show(i) {
+        current = (i + items.length) % items.length;
+        var el = items[current];
+        img.src = el.getAttribute('data-src');
+        cap.textContent = (current + 1) + ' / ' + items.length;
+        box.hidden = false;
+        document.body.style.overflow = 'hidden';
+    }
+    function hide() {
+        box.hidden = true;
+        document.body.style.overflow = '';
+    }
+    items.forEach(function (el, i) {
+        el.addEventListener('click', function () { show(i); });
+    });
+    box.querySelector('.lightbox-close').addEventListener('click', hide);
+    box.querySelector('.lightbox-prev').addEventListener('click', function () { show(current - 1); });
+    box.querySelector('.lightbox-next').addEventListener('click', function () { show(current + 1); });
+    box.addEventListener('click', function (e) { if (e.target === box) hide(); });
+    document.addEventListener('keydown', function (e) {
+        if (box.hidden) return;
+        if (e.key === 'Escape') hide();
+        if (e.key === 'ArrowLeft') show(current - 1);
+        if (e.key === 'ArrowRight') show(current + 1);
+    });
+})();
+</script>
+{{ end }}
+{{end}}

@@ -89,6 +89,13 @@
       <span>{{ getCategoryName(record[column.dataIndex]) }}</span>
     </template>
 
+    <template #contentType="{ record,rowIndex,column }">
+      <a-tag v-if="record[column.dataIndex] === 'video'" color="orangered">视频</a-tag>
+      <a-tag v-else-if="record[column.dataIndex] === 'novel'" color="arcoblue">小说</a-tag>
+      <a-tag v-else-if="record[column.dataIndex] === 'image'" color="green">图片</a-tag>
+      <a-tag v-else color="gray">普通</a-tag>
+    </template>
+
     <template #url="{ record,rowIndex,column }">
       <span @click="useOpenLink" class="inline-block cursor-pointer hover:underline underline-offset-4 decoration-2 hover:text-blue-500">{{ record[column.dataIndex] }}</span>
     </template>
