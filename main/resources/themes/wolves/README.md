@@ -36,6 +36,15 @@
 新布局样式集中追加在 `public/style.css`（分区注释 `category: video|novel|image`、`article: ...`、移动端 @media）。
 **`tailwind.css` 是预编译产物**——模板中新写的 Tailwind 原子类不会生效，新样式一律写自定义类进 style.css。
 
+### 无障碍与触控规范（ui-ux-pro-max 审查后固化）
+
+- 辅助文字色不低于 `#6b7280`（4.8:1）；勿再用 `#9ca3af` 作正文/元信息色
+- 所有可交互元素（含 `<button>`）显式 `cursor: pointer`，键盘焦点环 2px `#00aaff`（outline-offset 3px）
+- 触控目标：选集按钮 min-height 40px、章节导航 44px；新增按钮遵循同标准
+- 动效一律补 `prefers-reduced-motion: reduce` 降级（hover 位移置 none）
+- 当前选集以 `▶` 前缀 + 填色双重指示（不依赖颜色单一通道）
+- 小说正文限宽 44em 控制行长
+
 ## 开发期同步
 
 源码目录 `main/resources/themes/wolves/` 经 go:embed 打包（新部署自动释放）；
