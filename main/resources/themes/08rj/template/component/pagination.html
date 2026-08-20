@@ -1,0 +1,26 @@
+{{ block pagination(pageTotal, existNextPage=false) }}
+{{ if pageTotal > 1 }}
+<div class="flex justify-center items-center space-x-2">
+    {{ if Page.PageNumber > 1 }}
+    <a href="{{ Data.PageURL(Page.PageNumber - 1) }}" class="px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
+        <i class="fas fa-chevron-left mr-1"></i>上一页
+    </a>
+    {{ end }}
+    
+    {{ page := Utils.Pagination(Page.PageNumber, pageTotal, 5) }}
+    {{ range i, p := ints(page.Begin, page.End+1) }}
+        {{ if p == Page.PageNumber }}
+        <span class="px-4 py-2 bg-gradient-to-r from-primary-500 to-secondary-500 text-white rounded-lg shadow-md">{{ p }}</span>
+        {{ else }}
+        <a href="{{ Data.PageURL(p) }}" class="px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">{{ p }}</a>
+        {{ end }}
+    {{ end }}
+    
+    {{ if existNextPage }}
+    <a href="{{ Data.PageURL(Page.PageNumber + 1) }}" class="px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
+        下一页<i class="fas fa-chevron-right ml-1"></i>
+    </a>
+    {{ end }}
+</div>
+{{ end }}
+{{ end }}

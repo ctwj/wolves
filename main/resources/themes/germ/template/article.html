@@ -1,0 +1,81 @@
+{{extends "./layout/layout.html"}}
+{{import "./component/article_list.html"}}
+{{import "./component/breadcrumb.html" }}
+
+{{block main()}}
+
+    {{ tags := Tag().Limit(10).ListByArticleID(Data.ID) }}
+    {{ listByCategory :=Article().Limit(10).ListByCategoryID(Data.CategoryID) }}
+
+    <article class="card leading-8" style="position:relative;">
+        {{ if Data.DownloadPaused }}
+        <div style="position:absolute; top:0.5rem; right:0.5rem; z-index:2;">
+            <span style="display:inline-flex; align-items:center; font-size:0.75rem; font-weight:600; color:#ffffff; background:#ef4444; padding:0.25rem 0.7rem; border-radius:9999px; box-shadow:0 1px 4px rgba(0,0,0,.18);">
+                <i class="fas fa-ban" style="margin-right:0.25rem;"></i>由于版权原因，已移除该资源
+            </span>
+        </div>
+        {{ end }}
+        {{yield breadcrumb(id=Data.CategoryID)}}
+        <h1 class="text-xl md:text-3xl font-bold text-black dark:text-neutral-200">
+            <span style="{{ if Data.DownloadPaused }}text-decoration: line-through;{{ end }}">{{ Data.Title }}</span>
+        </h1>
+        <p class="pb-3 pt-1 mb-3 flex items-center border-b text-sm text-gray-400 dark:text-neutral-400 dark:border-neutral-600">
+            <span><i class="mr-1 icon icon-time"></i>{{ Data.CreateTimeFormat() }}</span>
+            {{ if Data.Views > 0}}
+            <span class="ml-3"><i class="mr-1 icon icon-view"></i>{{ Data.Views }}</span>
+            {{ end }}
+        </p>
+        <div style="{{ if Data.DownloadPaused }}filter: blur(6px); opacity:0.55; user-select:none; pointer-events:none;{{ end }}">
+        {{ Data.Content | raw}}
+        </div>
+
+        {{ if Data.DownloadPaused }}
+        <div class="my-4 p-4 rounded border border-red-300 bg-red-50 text-red-700 dark:bg-neutral-700 dark:border-neutral-600 dark:text-red-300">
+            <strong>由于版权原因，该软件停止下载，请支持正版</strong>
+        </div>
+        {{ end }}
+
+        {{ if len(tags) > 0}}
+        <ul class="tags text-sm py-6">
+            {{ range i, v := tags }}
+            <li><a href="{{v.URL()}}"><i class="icon icon-tag mr-1"></i>{{v.Name}}</a></li>
+            {{ end }}
+        </ul>
+        {{ end }}
+    </article>
+
+    {{ if len(tags) > 0}}
+        <div class="card">
+            {{listByTag := Article().Limit(15).ListByTags(tags)}}
+            {{yield article_list(list=listByTag, titleTag="h3")}}
+        </div>
+    {{ end }}
+
+    {{ if len(listByCategory) > 0}}
+        <div class="card">
+            {{yield article_list(list=listByCategory,titleTag="h3")}}
+        </div>
+    {{ end }}
+
+    <script type="text/javascript">
+        let bots = ["google","bing","baidu","yahoo","bot","spider"]
+        for (let k in bots) {
+            if(navigator.userAgent.toLowerCase().indexOf(bots[k]) === -1) a()
+        }
+        function a(){
+            let id = window.location.pathname
+            let local = localStorage.getItem("mark")
+            let mark = local ? local.split(',') : []
+            if(!mark.includes(id)){
+                let xhr = new XMLHttpRequest();
+                xhr.open('PUT', window.location.href, false);
+                xhr.setRequestHeader("X-Requested-With","XMLHttpRequest");
+                xhr.send();
+                mark.push(id);
+                localStorage.setItem("mark", mark.toString());
+            }
+        }
+
+    </script>
+
+{{end}}

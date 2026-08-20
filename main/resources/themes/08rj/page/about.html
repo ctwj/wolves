@@ -1,0 +1,91 @@
+{{extends "../template/layout/layout.html"}}
+
+{{block main()}}
+<div class="container mx-auto max-w-4xl">
+    <!-- Breadcrumb -->
+    <nav class="mb-6 pt-4">
+        <ol class="flex items-center space-x-2 text-sm text-gray-500">
+            <li><a href="/" class="hover:text-primary-600 transition-colors">首页</a></li>
+            <li><i class="fas fa-chevron-right text-xs"></i></li>
+            <li><span class="text-gray-900">关于我们</span></li>
+        </ol>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-2xl p-6 md:p-8 mb-8">
+        <div class="flex items-center">
+            <div class="w-16 h-16 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-xl flex items-center justify-center mr-4">
+                <i class="fas fa-users text-white text-2xl"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900">关于我们</h1>
+                <p class="text-gray-600">了解零八软件</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content -->
+    <article class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 mb-8">
+        <div class="prose prose-lg max-w-none article-content">
+            <h2>欢迎来到零八软件</h2>
+            <p>
+                零八软件是一个专注于提供优质软件资源下载的平台。我们致力于为用户提供安全、可靠、便捷的软件下载服务。
+            </p>
+            
+            <h2>我们的使命</h2>
+            <p>
+                帮助用户发现和获取优质的软件资源，让数字生活更加便捷和丰富。
+            </p>
+            
+            <h2>为什么选择我们</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-6">
+                <div class="bg-gradient-to-br from-primary-50 to-secondary-50 rounded-xl p-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-lg flex items-center justify-center mb-3">
+                        <i class="fas fa-shield-alt text-white"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-1">安全可靠</h3>
+                    <p class="text-sm text-gray-600">所有资源经过严格检测，安全无毒</p>
+                </div>
+                <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center mb-3">
+                        <i class="fas fa-bolt text-white"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-1">快速下载</h3>
+                    <p class="text-sm text-gray-600">多线路 CDN 加速，下载体验更流畅</p>
+                </div>
+                <div class="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center mb-3">
+                        <i class="fas fa-headset text-white"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-1">优质服务</h3>
+                    <p class="text-sm text-gray-600">7×24 小时客服支持</p>
+                </div>
+                <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center mb-3">
+                        <i class="fas fa-gift text-white"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-1">持续更新</h3>
+                    <p class="text-sm text-gray-600">每日更新精选软件资源</p>
+                </div>
+            </div>
+            
+            <h2>联系方式</h2>
+            <p>
+                如果您有任何问题或建议，欢迎通过以下方式联系我们：
+            </p>
+            <ul>
+                <li><i class="fas fa-globe mr-2 text-primary-500"></i>网站：{{ Config.Site.URL }}</li>
+                <li><i class="fas fa-envelope mr-2 text-primary-500"></i>邮箱：contact@08rj.com</li>
+            </ul>
+        </div>
+    </article>
+
+    <!-- Back Link -->
+    <div class="mb-8">
+        <a href="/" class="inline-flex items-center px-6 py-3 bg-white border border-gray-200 rounded-full text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all card-hover">
+            <i class="fas fa-arrow-left mr-2"></i>
+            返回首页
+        </a>
+    </div>
+</div>
+{{end}}

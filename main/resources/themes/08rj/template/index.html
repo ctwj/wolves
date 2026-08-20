@@ -1,0 +1,171 @@
+{{extends "./layout/layout.html"}}
+
+{{block main()}}
+<!-- Recommendation Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+    <!-- Guess You Like -->
+    <div class="bg-gradient-to-br from-primary-50 to-secondary-50 rounded-2xl p-6 shadow-sm border border-primary-100 card-hover">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+            <i class="fas fa-heart text-red-500 mr-2"></i>
+            猜你喜欢
+        </h2>
+        <div class="space-y-3">
+            {{ guessList := Article().Limit(8).PseudorandomList() }}
+            {{ range i, v := guessList }}
+            {{ if i < 8 }}
+            <a href="{{ v.URL() }}" class="bg-white rounded-xl p-3 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer flex items-center block">
+                <div class="w-10 h-10 bg-gradient-to-br from-primary-400 to-secondary-500 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
+                    {{ if v.Thumbnail != "" }}
+                    <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-10 h-10 object-cover" loading="lazy" decoding="async" width="40" height="40">
+                    {{ else }}
+                    <i class="fas fa-cube text-white text-xs" aria-hidden="true"></i>
+                    {{ end }}
+                </div>
+                <h3 class="font-medium text-gray-900 truncate flex-1">{{ v.Title }}</h3>
+            </a>
+            {{ end }}
+            {{ end }}
+        </div>
+    </div>
+    
+    <!-- Recent Updates -->
+    <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 shadow-sm border border-blue-100 card-hover">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+            <i class="fas fa-sync-alt text-blue-500 mr-2"></i>
+            最近更新
+        </h2>
+        <div class="space-y-4">
+            {{ range i, v := Article().Limit(6).Order("create_time desc").List() }}
+            <a href="{{ v.URL() }}" class="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer block">
+                <h3 class="font-medium text-gray-900 truncate">{{ v.Title }}</h3>
+                <p class="text-sm text-gray-500 mt-1">更新时间: {{ v.CreateTimeFormat() }}</p>
+            </a>
+            {{ end }}
+        </div>
+    </div>
+    
+    <!-- Hot Recommendations -->
+    <div class="bg-gradient-to-br from-orange-50 to-red-50 rounded-2xl p-6 shadow-sm border border-orange-100 card-hover">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+            <i class="fas fa-fire text-orange-500 mr-2"></i>
+            热门推荐
+        </h2>
+        <div class="space-y-4">
+            {{ range i, v := Article().Limit(6).Order("views desc").List() }}
+            <a href="{{ v.URL() }}" class="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer block">
+                <h3 class="font-medium text-gray-900 truncate">{{ v.Title }}</h3>
+                <p class="text-sm text-gray-500 mt-1">浏览次数: {{ v.Views }}次</p>
+            </a>
+            {{ end }}
+        </div>
+    </div>
+</div>
+
+<!-- Software Download Section -->
+{{ res := Widget.IndexList() }}
+<section class="mb-12">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-900">软件下载</h2>
+    </div>
+    
+    <!-- Category Tags -->
+    <div class="flex flex-wrap gap-3 mb-6">
+        {{ range i, v := Category().List() }}
+        <a href="{{ v.URL() }}" class="category-tag px-4 py-2 bg-white border border-gray-200 rounded-full text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
+            {{ v.Name }}
+        </a>
+        {{ end }}
+    </div>
+    
+    <!-- Software Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {{ range i, v := res }}
+        {{ tags := Tag().Limit(2).ListByArticleID(v.ID) }}
+        <a href="{{ v.URL() }}" class="bg-white rounded-xl p-4 border border-gray-200 card-hover hover:shadow-lg relative group block overflow-hidden">
+            <div class="flex items-start">
+                <div class="w-12 h-12 bg-gradient-to-br from-primary-400 to-secondary-500 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
+                    {{ if v.Thumbnail != "" }}
+                    <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-12 h-12 object-cover" loading="lazy" decoding="async" width="48" height="48">
+                    {{ else }}
+                    <i class="fas fa-cube text-white text-sm" aria-hidden="true"></i>
+                    {{ end }}
+                </div>
+                <div class="flex-1 min-w-0 overflow-hidden">
+                    <h3 class="font-semibold text-gray-900 text-base mb-1 truncate block">{{ v.Title }}</h3>
+                    {{ if len(tags) > 0 }}
+                    <div class="flex flex-wrap gap-1 mb-1">
+                        {{ range i, t := tags }}
+                        <span class="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs rounded-full whitespace-nowrap">{{ t.Name }}</span>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+                    <span class="text-xs text-gray-500">{{ v.CreateTimeFormat() }}</span>
+                </div>
+                <button class="opacity-0 group-hover:opacity-100 absolute top-2 right-2 bg-primary-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs transition-opacity hover:bg-primary-600 flex-shrink-0">
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>
+        </a>
+        {{ end }}
+    </div>
+</section>
+
+<!-- Article Zone Section -->
+<section class="mb-12">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-gray-900">文章专区</h2>
+        <a href="/category/tutorial" class="text-sm text-primary-600 hover:text-primary-700 flex items-center">
+            查看更多 <i class="fas fa-chevron-right ml-1 text-xs"></i>
+        </a>
+    </div>
+    
+    <!-- Article List -->
+    {{ tutorialCat := Category().GetBySlug("tutorial") }}
+    {{ globalList := Widget.GlobalList() }}
+    {{ if tutorialCat != nil }}
+        {{ globalList = Article().Limit(9).ListByCategoryID(tutorialCat.ID) }}
+    {{ end }}
+    {{ if len(globalList) > 0 }}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {{ range i, v := globalList }}
+        <a href="{{ v.URL() }}" class="bg-white rounded-xl p-4 border border-gray-200 card-hover hover:shadow-lg block overflow-hidden">
+            {{ if v.Thumbnail != "" }}
+            <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-full h-40 object-cover rounded-lg mb-3" loading="lazy" decoding="async">
+            {{ end }}
+            <h3 class="font-semibold text-gray-900 text-base mb-2 truncate">{{ v.Title }}</h3>
+            <p class="text-sm text-gray-500 line-clamp-2 mb-3">{{ v.Description }}</p>
+            <div class="flex items-center justify-between text-xs text-gray-400">
+                <span>{{ v.CreateTimeFormat() }}</span>
+                <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
+            </div>
+        </a>
+        {{ end }}
+    </div>
+    {{ else }}
+    <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-12 text-center">
+        <div class="w-20 h-20 bg-gradient-to-br from-blue-100 to-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <i class="fas fa-newspaper text-primary-500 text-2xl"></i>
+        </div>
+        <h3 class="text-xl font-semibold text-gray-900 mb-2">暂无文章内容</h3>
+        <p class="text-gray-500 text-sm">我们会持续发布更多优质教程，敬请期待！</p>
+    </div>
+    {{ end }}
+</section>
+
+<!-- Friend Links -->
+{{ links := Widget.Link() }}
+{{ if len(links) > 0 }}
+<section class="mb-12">
+    <h2 class="text-xl font-semibold text-gray-900 mb-4">友情链接</h2>
+    <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6">
+        <div class="flex flex-wrap gap-4">
+            {{ range i, v := links }}
+            <a href="{{ v.URL }}" target="_blank" rel="noopener" class="px-4 py-2 bg-white rounded-lg text-gray-700 hover:text-primary-600 hover:shadow-md transition-all text-sm">
+                {{ v.Name }}
+            </a>
+            {{ end }}
+        </div>
+    </div>
+</section>
+{{ end }}
+{{end}}
