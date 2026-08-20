@@ -1,0 +1,512 @@
+package repository
+
+import (
+	"moss/domain/config"
+	"moss/domain/core/entity"
+	"moss/domain/core/repository/context"
+	"moss/domain/core/repository/gormx"
+	"moss/domain/core/utils"
+	"moss/infrastructure/general/message"
+	"moss/infrastructure/persistent/db"
+	"moss/infrastructure/utils/errorx"
+
+	"gorm.io/gorm"
+)
+
+var Article = new(ArticleRepo)
+
+type ArticleRepo struct {
+}
+
+func (r *ArticleRepo) MigrateTable() error {
+	return db.DB.AutoMigrate(&entity.ArticleBase{}, &entity.ArticleDetail{})
+}
+
+func (r *ArticleRepo) Create(item *entity.Article) error {
+	return db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := r.checkPost(tx, item); err != nil {
+			return err
+		}
+		if err := tx.Create(&item.ArticleBase).Error; err != nil {
+			return err
+		}
+		item.ArticleDetail.ArticleID = item.ArticleBase.ID
+		return tx.Create(&item.ArticleDetail).Error
+	})
+}
+
+func (r *ArticleRepo) CreateInBatches(items []entity.Article) (err error) {
+	return db.DB.Transaction(func(tx *gorm.DB) error {
+		for k := range items {
+			if err := r.checkPost(tx, &items[k]); err != nil {
+				return err
+			}
+			if err := tx.Create(&items[k].ArticleBase).Error; err != nil {
+				return err
+			}
+			items[k].ArticleDetail.ArticleID = items[k].ArticleBase.ID
+			if e := tx.Create(&items[k].ArticleDetail).Error; err != nil {
+				return e
+			}
+		}
+		return nil
+	})
+}
+
+func (r *ArticleRepo) Update(item *entity.Article) error {
+	return db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := r.checkPost(tx, item); err != nil {
+			return err
+		}
+		if err := tx.Select("*").Omit("id").Where("id = ?", item.ArticleBase.ID).Updates(&item.ArticleBase).Error; err != nil {
+			return err
+		}
+		item.ArticleDetail.ArticleID = item.ArticleBase.ID
+		return tx.Select("*").Omit("article_id").Where("article_id = ?", item.ArticleDetail.ArticleID).Updates(&item.ArticleDetail).Error
+	})
+}
+
+func (r *ArticleRepo) checkPost(tx *gorm.DB, item *entity.Article) error {
+	var existID int
+	if config.Config.More.UniqueTitle {
+		if err := tx.Model(&entity.ArticleBase{}).Where("title = ? and id != ?", item.Title, item.ID).Limit(1).Pluck("id", &existID).Error; err != nil {
+			return err
+		}
+		if existID > 0 {
+			return message.ErrTitleAlreadyExists
+		}
+	}
+	return nil
+}
+
+func (r *ArticleRepo) Delete(id int) error {
+	return db.DB.Transaction(func(tx *gorm.DB) error {
+		return errorx.ErrorReturn(
+			tx.Delete(&entity.ArticleBase{ID: id}).Error,
+			tx.Delete(&entity.ArticleDetail{ArticleID: id}).Error,
+		)
+	})
+}
+
+func (r *ArticleRepo) Get(id int) (*entity.Article, error) {
+	var res entity.Article
+	err := db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&entity.ArticleBase{}).Where("id = ?", id).Find(&res.ArticleBase).Error; err != nil || res.ArticleBase.ID == 0 {
+			return err
+		}
+		return tx.Model(&entity.ArticleDetail{}).Where("article_id = ?", res.ArticleBase.ID).Find(&res.ArticleDetail).Error
+	})
+	return &res, err
+}
+
+// GetBySlug 通过slug获取
+func (r *ArticleRepo) GetBySlug(slug string) (*entity.Article, error) {
+	var res entity.Article
+	err := db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&entity.ArticleBase{}).Where("slug = ?", slug).Find(&res.ArticleBase).Error; err != nil || res.ArticleBase.ID == 0 {
+			return err
+		}
+		return tx.Model(&entity.ArticleDetail{}).Where("article_id = ?", res.ArticleBase.ID).Find(&res.ArticleDetail).Error
+	})
+	return &res, err
+}
+
+// UpdateViewsBySlug 通过slug更新views
+func (r *ArticleRepo) UpdateViewsBySlug(slug string, n int) error {
+	return db.DB.Model(entity.ArticleBase{}).Where("slug = ?", slug).Limit(1).UpdateColumn("views", gorm.Expr("views + ?", n)).Error
+}
+
+// CountByWhere 通过where获取统计结果
+func (r *ArticleRepo) CountByWhere(where *context.Where) (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Scopes(gormx.Where(where)).Count(&res).Error
+	return
+}
+
+// CountTotal 统计文章总数
+func (r *ArticleRepo) CountTotal() (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Count(&res).Error
+	return
+}
+
+// CountToday 统计今日添加数量
+func (r *ArticleRepo) CountToday() (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ?", utils.TodayBeginTime().Unix()).Count(&res).Error
+	return
+}
+
+// CountYesterday 统计昨日添加数量
+func (r *ArticleRepo) CountYesterday() (res int64, err error) {
+	today := utils.TodayBeginTime()
+	yesterday := today.AddDate(0, 0, -1)
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ? and create_time < ?", yesterday.Unix(), today.Unix()).Count(&res).Error
+	return
+}
+
+// CountLastFewDays 统计最近几日的数据
+func (r *ArticleRepo) CountLastFewDays(n int) (res int64, err error) {
+	today := utils.TodayBeginTime()
+	days := today.AddDate(0, 0, -n)
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ?", days.Unix()).Count(&res).Error
+	return
+}
+
+// CountTotalPublished 统计已发布文章总数
+func (r *ArticleRepo) CountTotalPublished() (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Where("status = ?", true).Count(&res).Error
+	return
+}
+
+// CountTodayPublished 统计今日已发布数量
+func (r *ArticleRepo) CountTodayPublished() (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ? and status = ?", utils.TodayBeginTime().Unix(), true).Count(&res).Error
+	return
+}
+
+// CountYesterdayPublished 统计昨日已发布数量
+func (r *ArticleRepo) CountYesterdayPublished() (res int64, err error) {
+	today := utils.TodayBeginTime()
+	yesterday := today.AddDate(0, 0, -1)
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ? and create_time < ? and status = ?", yesterday.Unix(), today.Unix(), true).Count(&res).Error
+	return
+}
+
+// CountLastFewDaysPublished 统计最近几日已发布的数据
+func (r *ArticleRepo) CountLastFewDaysPublished(n int) (res int64, err error) {
+	today := utils.TodayBeginTime()
+	days := today.AddDate(0, 0, -n)
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ? and status = ?", days.Unix(), true).Count(&res).Error
+	return
+}
+
+func (r *ArticleRepo) GetIdByTitle(title string) (id int, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Where("title = ?", title).Limit(1).Pluck("id", &id).Error
+	return
+}
+
+func (r *ArticleRepo) GetIdBySlug(slug string) (id int, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Where("slug = ?", slug).Limit(1).Pluck("id", &id).Error
+	return
+}
+
+// MaxID 获取最大ID
+func (r *ArticleRepo) MaxID() (res int, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Limit(1).Order("id desc").Limit(1).Pluck("id", &res).Error
+	return
+}
+
+// RandomList 使用 SQL 随机获取文章列表（更高效）
+func (r *ArticleRepo) RandomList(ctx *context.Context) (res []entity.ArticleBase, err error) {
+	err = db.DB.Model(&entity.ArticleBase{}).Scopes(gormx.Context(ctx)).Order("RANDOM()").Find(&res).Error
+	return
+}
+
+// List 调用文章列表
+func (r *ArticleRepo) List(ctx *context.Context) (res []entity.ArticleBase, err error) {
+	err = db.DB.Model(&entity.ArticleBase{}).Scopes(gormx.Context(ctx)).Find(&res).Error
+	return
+}
+
+// ListExistThumbnail 调用文章列表
+func (r *ArticleRepo) ListExistThumbnail(ctx *context.Context) (res []entity.ArticleBase, err error) {
+	err = db.DB.Model(&entity.ArticleBase{}).Where("thumbnail !=''").Scopes(gormx.Context(ctx)).Find(&res).Error
+	return
+}
+
+// ListByIds 根据id调用文章列表
+func (r *ArticleRepo) ListByIds(ctx *context.Context, ids []int) (res []entity.ArticleBase, err error) {
+	err = db.DB.Model(&entity.ArticleBase{}).Scopes(gormx.Context(ctx, gormx.WhereIds(ids))).Find(&res).Error
+	return
+}
+
+// ListByCategoryIds 根据分类ID调用文章列表
+func (r *ArticleRepo) ListByCategoryIds(ctx *context.Context, categoryIds []int) (res []entity.ArticleBase, err error) {
+	err = db.DB.Model(&entity.ArticleBase{}).Scopes(gormx.Context(ctx, gormx.WhereCategoryIds(categoryIds))).Find(&res).Error
+	return
+}
+
+// ListByCategoryIDWithDetail 根据分类ID调用文章列表（包含详情，用于模板渲染）
+func (r *ArticleRepo) ListByCategoryIDWithDetail(ctx *context.Context, categoryID int) (res []entity.Article, err error) {
+	return r.ListByCategoryIdsWithDetail(ctx, []int{categoryID})
+}
+
+// ListByCategoryIdsWithDetail 根据多个分类ID调用文章列表（包含详情，用于模板渲染）
+func (r *ArticleRepo) ListByCategoryIdsWithDetail(ctx *context.Context, categoryIds []int) (res []entity.Article, err error) {
+	if len(categoryIds) == 0 {
+		return
+	}
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		// 查询基础信息
+		var articleBases []entity.ArticleBase
+		if err := tx.Model(&entity.ArticleBase{}).
+			Scopes(gormx.Context(ctx, gormx.WhereCategoryIds(categoryIds))).
+			Find(&articleBases).Error; err != nil {
+			return err
+		}
+
+		if len(articleBases) == 0 {
+			return nil
+		}
+
+		// 收集所有文章ID
+		articleIDs := make([]int, len(articleBases))
+		for i, base := range articleBases {
+			articleIDs[i] = base.ID
+		}
+
+		// 查询详情信息
+		var articleDetails []entity.ArticleDetail
+		if err := tx.Model(&entity.ArticleDetail{}).
+			Where("article_id IN ?", articleIDs).
+			Find(&articleDetails).Error; err != nil {
+			return err
+		}
+
+		// 创建详情映射
+		detailMap := make(map[int]entity.ArticleDetail)
+		for _, detail := range articleDetails {
+			detailMap[detail.ArticleID] = detail
+		}
+
+		// 组装完整的 Article 对象
+		res = make([]entity.Article, len(articleBases))
+		for i, base := range articleBases {
+			res[i].ArticleBase = base
+			if detail, ok := detailMap[base.ID]; ok {
+				res[i].ArticleDetail = detail
+			}
+		}
+
+		return nil
+	})
+	return
+}
+
+// ListAfterCreateTime 根据创建时间调用列表
+func (r *ArticleRepo) ListAfterCreateTime(ctx *context.Context, t int64) (res []entity.ArticleBase, err error) {
+	err = db.DB.Model(&entity.ArticleBase{}).Scopes(gormx.Context(ctx, gormx.WhereCreateTimeAfter(t))).Find(&res).Error
+	return
+}
+
+// ListBeforeCreateTime 根据创建时间调用列表
+func (r *ArticleRepo) ListBeforeCreateTime(ctx *context.Context, t int64) (res []entity.ArticleBase, err error) {
+	err = db.DB.Model(&entity.ArticleBase{}).Scopes(gormx.Context(ctx), gormx.WhereCreateTimeBefore(t)).Find(&res).Error
+	return
+}
+
+func (r *ArticleRepo) ListByKeyword(ctx *context.Context, keyword string) (res []entity.ArticleBase, err error) {
+	like := "%" + keyword + "%"
+	err = db.DB.Model(&entity.ArticleBase{}).
+		Where("title like ? or description like ?", like, like).
+		Scopes(gormx.Context(ctx)).
+		Find(&res).Error
+	return
+}
+
+func (r *ArticleRepo) CountByKeyword(keyword string) (res int64, err error) {
+	like := "%" + keyword + "%"
+	err = db.DB.Model(&entity.ArticleBase{}).
+		Where("title like ? or description like ?", like, like).
+		Count(&res).Error
+	return
+}
+
+// ListDetail 调用详情表文章列表
+func (r *ArticleRepo) ListDetail(ctx *context.Context) (res []entity.ArticleDetail, err error) {
+	err = db.DB.Model(&entity.ArticleDetail{}).Scopes(gormx.Context(ctx)).Find(&res).Error
+	return
+}
+
+func (r *ArticleRepo) ListDetailByIds(ctx *context.Context, ids []int) (res []entity.ArticleDetail, err error) {
+	err = db.DB.Model(&entity.ArticleDetail{}).Where("article_id in ?", ids).Scopes(gormx.Context(ctx)).Find(&res).Error
+	return
+}
+
+// CountByCategoryID 模板分类ID统计
+func (r *ArticleRepo) CountByCategoryID(id int) (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Scopes(gormx.WhereCategoryID(id)).Count(&res).Error
+	return
+}
+
+// BatchSetCategory 批量设置分类
+func (r *ArticleRepo) BatchSetCategory(categoryID int, ids []int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id in ?", ids).UpdateColumn("category_id", categoryID).Error
+}
+
+// EnableArticle 启用文章（发布）
+func (r *ArticleRepo) EnableArticle(id int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("status", true).Error
+}
+
+// DisableArticle 禁用文章（未发布）
+func (r *ArticleRepo) DisableArticle(id int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("status", false).Error
+}
+
+// PauseDownload 暂停文章下载（版权下架），并写入正版 URL
+func (r *ArticleRepo) PauseDownload(id int, genuineURL string) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).
+		Updates(map[string]any{"download_paused": true, "genuine_url": genuineURL}).Error
+}
+
+// ResumeDownload 恢复文章下载（保留 genuine_url 便于再次暂停）
+func (r *ArticleRepo) ResumeDownload(id int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("download_paused", false).Error
+}
+
+// ListUngeneratedArticles 获取未生成 SEO 内容的文章列表
+// skipPublished: 是否跳过已发布文章
+// forceRegenerate: 是否强制重新生成（忽略已生成标记）
+func (r *ArticleRepo) ListUngeneratedArticles(limit int, skipPublished, forceRegenerate bool) (res []*entity.Article, err error) {
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		// 构建基础查询
+		query := tx.Model(&entity.ArticleBase{}).
+			Select("article.*, article_detail.*").
+			Joins("LEFT JOIN article_detail ON article.id = article_detail.article_id")
+
+		// 跳过已发布文章
+		if skipPublished {
+			query = query.Where("article.status = ?", false)
+		}
+
+		// 非强制重新生成时，过滤已生成的文章
+		// extends 是 JSON 字段，存储格式为: [{"key":"ai_seo_generated","value":true}]
+		// 需要查询 extends 中不包含 ai_seo_generated 或其值为 false 的文章
+		if !forceRegenerate {
+			// 使用 JSON 函数检查 ai_seo_generated 不存在或为 false
+			// 兼容 SQLite/MySQL/PostgreSQL
+			query = query.Where(
+				"article_detail.extends IS NULL OR article_detail.extends = '' OR " +
+					"article_detail.extends NOT LIKE '%ai_seo_generated%' OR " +
+					"article_detail.extends LIKE '%\"ai_seo_generated\"%' AND article_detail.extends LIKE '%\"value\":false%'",
+			)
+		}
+
+		// 按ID升序排列，获取指定数量
+		var articleBases []entity.ArticleBase
+		var articleDetails []entity.ArticleDetail
+
+		if err := query.Order("article.id ASC").Limit(limit).Find(&articleBases).Error; err != nil {
+			return err
+		}
+
+		if len(articleBases) == 0 {
+			return nil
+		}
+
+		// 收集文章ID
+		articleIDs := make([]int, len(articleBases))
+		for i, base := range articleBases {
+			articleIDs[i] = base.ID
+		}
+
+		// 查询详情
+		if err := tx.Model(&entity.ArticleDetail{}).
+			Where("article_id IN ?", articleIDs).
+			Find(&articleDetails).Error; err != nil {
+			return err
+		}
+
+		// 组装结果
+		detailMap := make(map[int]entity.ArticleDetail)
+		for _, detail := range articleDetails {
+			detailMap[detail.ArticleID] = detail
+		}
+
+		res = make([]*entity.Article, len(articleBases))
+		for i, base := range articleBases {
+			article := &entity.Article{ArticleBase: base}
+			if detail, ok := detailMap[base.ID]; ok {
+				article.ArticleDetail = detail
+			}
+			res[i] = article
+		}
+
+		return nil
+	})
+	return
+}
+
+// ListArticlesNeedImageSync 获取需要图片同步的文章列表
+// domain: 目标域名，用于筛选不匹配该域名的图片
+// limit: 最大返回数量
+// 返回已发布文章中，缩略图或正文包含非目标域名图片的文章
+func (r *ArticleRepo) ListArticlesNeedImageSync(domain string, limit int) (res []*entity.Article, err error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		// 构建基础查询：已发布文章
+		query := tx.Model(&entity.ArticleBase{}).
+			Select("article.*, article_detail.*").
+			Joins("LEFT JOIN article_detail ON article.id = article_detail.article_id").
+			Where("article.status = ?", true)
+
+		// 筛选条件
+		if domain != "" {
+			// 条件1：缩略图非空且不匹配域名
+			// 条件2：正文包含 img 标签，且 src 属性不包含目标域名
+			// 注意：SQL 无法精确解析 HTML，这里用 LIKE 近似匹配
+			// 匹配 src=" 或 src=' 后面不跟目标域名的情况
+			// 需要同时检查双引号和单引号
+			query = query.Where(
+				"(article.thumbnail != '' AND article.thumbnail NOT LIKE ?) OR "+
+					"(article_detail.content LIKE '%<img%' AND "+
+					"article_detail.content NOT LIKE ? AND "+
+					"article_detail.content NOT LIKE ?)",
+				"%"+domain+"%",
+				"%src=\"%"+domain+"%",
+				"%src='%"+domain+"%",
+			)
+		} else {
+			// 域名为空时，只筛选包含图片的文章
+			query = query.Where(
+				"article.thumbnail != '' OR article_detail.content LIKE ?",
+				"%<img%",
+			)
+		}
+
+		// 按ID升序排列，获取指定数量
+		var articleBases []entity.ArticleBase
+		var articleDetails []entity.ArticleDetail
+
+		if err := query.Order("article.id ASC").Limit(limit).Find(&articleBases).Error; err != nil {
+			return err
+		}
+
+		if len(articleBases) == 0 {
+			return nil
+		}
+
+		// 收集文章ID
+		articleIDs := make([]int, len(articleBases))
+		for i, base := range articleBases {
+			articleIDs[i] = base.ID
+		}
+
+		// 查询详情
+		if err := tx.Model(&entity.ArticleDetail{}).
+			Where("article_id IN ?", articleIDs).
+			Find(&articleDetails).Error; err != nil {
+			return err
+		}
+
+		// 组装结果
+		detailMap := make(map[int]entity.ArticleDetail)
+		for _, detail := range articleDetails {
+			detailMap[detail.ArticleID] = detail
+		}
+
+		res = make([]*entity.Article, len(articleBases))
+		for i, base := range articleBases {
+			article := &entity.Article{ArticleBase: base}
+			if detail, ok := detailMap[base.ID]; ok {
+				article.ArticleDetail = detail
+			}
+			res[i] = article
+		}
+
+		return nil
+	})
+	return
+}

@@ -1,0 +1,68 @@
+package controller
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"moss/api/web/mapper"
+	appService "moss/application/service"
+	"moss/domain/support/service"
+	"strconv"
+)
+
+func PluginList(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResultData(appService.PluginList(), nil))
+}
+
+func PluginOptions(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResultData(service.Plugin.GetOptions(ctx.Params("id"))))
+}
+
+func PluginSaveOptions(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResult(service.Plugin.UpdateOptions(ctx.Params("id"), ctx.Body())))
+}
+
+func PluginRun(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResult(service.Plugin.Run(ctx.Params("id"))))
+}
+
+func PluginCronStart(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResult(service.Plugin.UpdateCronStart(ctx.Params("id"), true)))
+}
+
+func PluginCronStop(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResult(service.Plugin.UpdateCronStart(ctx.Params("id"), false)))
+}
+
+func PluginUpdateCronExp(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResult(service.Plugin.UpdateCronExp(ctx.Params("id"), string(ctx.Body()))))
+}
+
+func PluginLogList(ctx *fiber.Ctx) error {
+	page, _ := strconv.Atoi(ctx.Query("page", "1"))
+	limit, _ := strconv.Atoi(ctx.Query("limit", "100"))
+	return ctx.JSON(mapper.MessageResultData(appService.PluginLogList(ctx.Params("id"), page, limit)))
+}
+
+// PluginTestCookie 测试插件Cookie有效性
+func PluginTestCookie(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResultData(service.Plugin.TestCookie(ctx.Params("id"), string(ctx.Body()))))
+}
+
+// PluginGetDirectories 获取插件目录列表
+func PluginGetDirectories(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResultData(service.Plugin.GetDirectories(ctx.Params("id"), string(ctx.Body()))))
+}
+
+// PluginPreviewWatermark 预览水印效果
+func PluginPreviewWatermark(ctx *fiber.Ctx) error {
+	imageData, err := service.Plugin.PreviewWatermark(ctx.Params("id"))
+	if err != nil {
+		return ctx.JSON(mapper.MessageResult(err))
+	}
+	
+	// 设置响应头并返回图片
+	ctx.Set("Content-Type", "image/jpeg")
+	ctx.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	ctx.Set("Pragma", "no-cache")
+	ctx.Set("Expires", "0")
+	return ctx.Send(imageData)
+}

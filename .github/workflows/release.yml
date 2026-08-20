@@ -1,0 +1,237 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '版本号 (例如: v0.1.5)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ''
+            upx: true
+          - goos: linux
+            goarch: arm64
+            suffix: ''
+            upx: true
+          - goos: windows
+            goarch: amd64
+            suffix: '.exe'
+            upx: true
+          - goos: windows
+            goarch: arm64
+            suffix: '.exe'
+            upx: false
+          - goos: darwin
+            goarch: amd64
+            suffix: ''
+            upx: false
+          - goos: darwin
+            goarch: arm64
+            suffix: ''
+            upx: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Download Go dependencies
+        working-directory: main
+        run: go mod download
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+
+      - name: Install frontend dependencies
+        working-directory: admin
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: admin
+        run: pnpm run build
+        env:
+          NODE_ENV: production
+
+      - name: Verify frontend build
+        run: |
+          echo "=== Checking build output ==="
+          ls -la main/resources/admin/
+          echo ""
+          echo "=== Assets directory ==="
+          ls -la main/resources/admin/assets/ || echo "No assets directory!"
+          echo ""
+          echo "=== index.html content ==="
+          cat main/resources/admin/index.html
+          echo ""
+          if [ ! -f "main/resources/admin/index.html" ]; then
+            echo "Error: index.html not found"
+            exit 1
+          fi
+          if [ ! -d "main/resources/admin/assets" ]; then
+            echo "Error: assets directory not found"
+            exit 1
+          fi
+          if ! grep -q "assets/index" main/resources/admin/index.html; then
+            echo "Error: index.html missing JS references"
+            exit 1
+          fi
+          # 统计 assets 文件数量
+          ASSET_COUNT=$(ls main/resources/admin/assets/ | wc -l)
+          echo "Assets count: $ASSET_COUNT"
+          if [ "$ASSET_COUNT" -lt 10 ]; then
+            echo "Warning: Too few assets files, build may be incomplete"
+          fi
+          echo "Frontend build verified successfully"
+
+      - name: Install UPX
+        if: matrix.upx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx-ucl
+
+      - name: Build backend
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        working-directory: main
+        run: |
+          go build -ldflags="-s -w" -trimpath -o ../moss_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }} ./cmd/web/main.go
+
+      - name: Compress with UPX
+        if: matrix.upx
+        run: |
+          upx --best --lzma moss_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moss_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: moss_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Verify embed content
+        run: |
+          echo "=== Verifying embed content in binary ==="
+          ls -la artifacts/
+          chmod +x artifacts/moss_linux_amd64
+          timeout 10s ./artifacts/moss_linux_amd64 &
+          sleep 3
+          
+          echo "=== Testing index.html ==="
+          curl -s http://localhost:9008/admin/ | head -20
+          
+          echo ""
+          echo "=== Testing JS file (should not be HTML) ==="
+          JS_FILE=$(curl -s http://localhost:9008/admin/ | grep -oP 'assets/index\.[a-f0-9]+\.js' | head -1)
+          echo "JS file: $JS_FILE"
+          if [ -n "$JS_FILE" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -I "http://localhost:9008/admin/$JS_FILE")
+            CONTENT_TYPE=$(curl -s -I "http://localhost:9008/admin/$JS_FILE" | grep -i content-type | head -1)
+            echo "HTTP Code: $HTTP_CODE"
+            echo "Content-Type: $CONTENT_TYPE"
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "Error: JS file returned HTTP $HTTP_CODE"
+              exit 1
+            fi
+            if echo "$CONTENT_TYPE" | grep -qi "html"; then
+              echo "Error: JS file returned HTML content-type"
+              exit 1
+            fi
+          fi
+          
+          echo ""
+          echo "=== Testing CSS file ==="
+          CSS_FILE=$(curl -s http://localhost:9008/admin/ | grep -oP 'assets/index\.[a-f0-9]+\.css' | head -1)
+          echo "CSS file: $CSS_FILE"
+          if [ -n "$CSS_FILE" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -I "http://localhost:9008/admin/$CSS_FILE")
+            echo "HTTP Code: $HTTP_CODE"
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "Error: CSS file returned HTTP $HTTP_CODE"
+              exit 1
+            fi
+          fi
+          
+          echo ""
+          echo "Embed verification passed!"
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create tag (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.get_version.outputs.VERSION }}
+          git push origin ${{ steps.get_version.outputs.VERSION }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          name: Moss ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Moss CMS ${{ steps.get_version.outputs.VERSION }}
+            
+            ### 使用方式
+            ```bash
+            # Linux/macOS
+            chmod +x moss_linux_amd64
+            ./moss_linux_amd64
+            
+            # Windows
+            moss_windows_amd64.exe
+            ```
+            
+            默认端口: 9008
+            管理后台: http://localhost:9008/admin/
+          files: artifacts/*
+          draft: false
+          prerelease: false

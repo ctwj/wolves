@@ -1,0 +1,73 @@
+package router
+
+import (
+	"moss/api/web/controller"
+	"moss/api/web/middleware"
+	"moss/domain/config"
+	"moss/infrastructure/general/constant"
+	"moss/infrastructure/support/template"
+	"path/filepath"
+
+	"github.com/gofiber/fiber/v2"
+)
+
+func (r *Router) RegisterHome(route fiber.Router) {
+
+	route.Get("/robots.txt", controller.AssetsRobotsTxt)
+	route.Get("/ads.txt", controller.AssetsAdsTxt)
+	route.Get("/favicon.ico", controller.FaviconIco)
+	route.Get(constant.LogoFilePath, controller.Logo)
+
+	// sitemap
+	sitemap := route.Group(config.Config.Router.GetSitemapPath())
+	sitemap.Get("/article.xml", middleware.Cache, controller.Sitemap.ArticleXML).Name("sitemap")
+	sitemap.Get("/article.txt", middleware.Cache, controller.Sitemap.ArticleTXT).Name("sitemap")
+	sitemap.Get("/category.xml", middleware.Cache, controller.Sitemap.CategoryXML).Name("sitemap")
+	sitemap.Get("/category.txt", middleware.Cache, controller.Sitemap.CategoryTXT).Name("sitemap")
+	sitemap.Get("/tag.xml", middleware.Cache, controller.Sitemap.TagXML).Name("sitemap")
+	sitemap.Get("/tag.txt", middleware.Cache, controller.Sitemap.TagTXT).Name("sitemap")
+
+	// RSS/Atom 订阅
+	route.Get("/rss.xml", controller.RSS.RSS).Name("rss")
+	route.Get("/atom.xml", controller.RSS.Atom).Name("atom")
+
+	// llms.txt 和 API 端点
+	route.Get("/llms.txt", controller.LLMs.LLMsTxt).Name("llms")
+	route.Get("/api.json", controller.LLMs.API).Name("api")
+
+	// home
+	route.Get("/", middleware.Cache, middleware.MinifyCode, controller.HomeIndex).Name("home")
+	// search (no cache: keyword in query string)
+	route.Get("/search", middleware.MinifyCode, controller.HomeSearch).Name("search")
+
+	// static路由应当放到  template page路由前面
+	// 否则不能正确响应文件的content-Type
+	// template public
+	if currentThemePath, err := template.CurrentThemePath(); err == nil {
+		route.Static("/", filepath.Join(currentThemePath, "public"))
+	}
+	// public
+	route.Static("/", constant.PublicDir)
+
+	// template page
+	route.Get("/*", middleware.Cache, middleware.MinifyCode, controller.TemplatePage).Name("page")
+
+	// category
+	route.Get(config.Config.Router.GetCategoryPageRule(), middleware.Cache, middleware.MinifyCode, controller.HomeCategory).Name("category")
+	route.Get(config.Config.Router.GetCategoryRule(), middleware.Cache, middleware.MinifyCode, controller.HomeCategory).Name("category")
+
+	// tag
+	route.Get(config.Config.Router.GetTagPageRule(), middleware.Cache, middleware.MinifyCode, controller.HomeTag).Name("tag")
+	route.Get(config.Config.Router.GetTagRule(), middleware.Cache, middleware.MinifyCode, controller.HomeTag).Name("tag")
+
+	// article
+	articleRule := config.Config.Router.GetArticleRule()
+	route.Get(articleRule, middleware.Cache, middleware.MinifyCode, controller.HomeArticle).Name("article")
+	route.Put(articleRule, controller.HomeArticleViews)
+
+	// download redirect
+	route.Get("/download/:slug", controller.HomeDownloadRedirect).Name("download")
+
+	// not found
+	route.All("*", middleware.MinifyCode, controller.HomeNotFound)
+}
