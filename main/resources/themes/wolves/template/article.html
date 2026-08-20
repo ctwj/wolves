@@ -91,7 +91,7 @@
 <div class="container mx-auto max-w-6xl">
     <!-- Breadcrumb -->
     <nav class="mb-6" aria-label="面包屑导航">
-        <ol class="flex items-center space-x-2 text-sm text-gray-500 flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+        <ol class="flex items-center space-x-2 text-sm w-text-3 flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
             <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
                 <a href="/" itemprop="item" class="hover:text-primary-600 transition-colors">
                     <span itemprop="name">首页</span>
@@ -114,7 +114,7 @@
         <!-- Main Content -->
         <article class="flex-1 min-w-0">
             <!-- Article Header -->
-            <header class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6 relative">
+            <header class="w-surface rounded-2xl p-6 md:p-8 shadow-sm border w-border mb-6 relative">
                 {{ if Data.DownloadPaused }}
                 <div style="position:absolute; top:0.75rem; right:0.75rem; z-index:2;">
                     <span style="display:inline-flex; align-items:center; font-size:0.75rem; font-weight:600; color:#ffffff; background:#ef4444; padding:0.25rem 0.7rem; border-radius:9999px; box-shadow:0 1px 4px rgba(0,0,0,.18);">
@@ -122,12 +122,12 @@
                     </span>
                 </div>
                 {{ end }}
-                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 mb-4 leading-tight">
+                <h1 class="text-2xl md:text-3xl font-bold w-text mb-4 leading-tight">
                     <span style="{{ if Data.DownloadPaused }}text-decoration: line-through;{{ end }}">{{ Data.Title }}</span>
                 </h1>
                 
                 <!-- 发布时间和浏览量 -->
-                <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-4">
+                <div class="flex flex-wrap items-center gap-4 text-sm w-text-3 mb-4">
                     <span class="flex items-center">
                         <i class="fas fa-calendar-alt mr-2 text-primary-500"></i>
                         {{ Data.CreateTimeFormat }}
@@ -148,7 +148,7 @@
                 {{ if len(tags) > 0 }}
                 <div class="flex flex-wrap gap-2">
                     {{ range i, t := tags }}
-                    <a href="{{ t.URL() }}" class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-primary-50 to-blue-50 text-primary-700 text-sm rounded-full border border-primary-100 hover:from-primary-100 hover:to-blue-100 transition-colors">
+                    <a href="{{ t.URL() }}" class="inline-flex items-center px-3 py-1 w-tag text-sm rounded-full border  transition-colors">
                         <i class="fas fa-hashtag mr-1 text-xs opacity-60"></i>{{ t.Name }}
                     </a>
                     {{ end }}
@@ -164,7 +164,7 @@
             {{else if Data.ContentType == "image"}}
             {{yield articleImage()}}
             {{else}}
-            <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6 relative overflow-hidden" style="{{ if Data.DownloadPaused }}min-height: 22rem; max-height: 60vh;{{ end }}">
+            <div class="w-surface rounded-2xl p-6 md:p-8 shadow-sm border w-border mb-6 relative overflow-hidden" style="{{ if Data.DownloadPaused }}min-height: 22rem; max-height: 60vh;{{ end }}">
                 {{ if Data.Content != "" }}
                 <div class="prose prose-lg max-w-none article-content transition-all duration-300" style="{{ if Data.DownloadPaused }}filter: blur(7px); -webkit-filter: blur(7px); opacity: 0.55; user-select: none; pointer-events: none;{{ end }}">
                     {{ Data.Content | raw }}
@@ -178,8 +178,8 @@
                 </div>
                 {{ end }}
                 {{ else }}
-                <div class="text-center py-12 text-gray-500">
-                    <i class="fas fa-file-alt text-4xl mb-4 text-gray-300"></i>
+                <div class="text-center py-12 w-text-3">
+                    <i class="fas fa-file-alt text-4xl mb-4 w-text-3"></i>
                     <p>暂无内容</p>
                 </div>
                 {{ end }}
@@ -188,32 +188,32 @@
 
             <!-- Download Resources Section -->
             {{ if len(Data.DownloadList) > 0 }}
-            <div id="download-section" class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6 relative overflow-hidden" style="{{ if Data.DownloadPaused }}min-height: 22rem;{{ end }}">
+            <div id="download-section" class="w-surface rounded-2xl p-6 md:p-8 shadow-sm border w-border mb-6 relative overflow-hidden" style="{{ if Data.DownloadPaused }}min-height: 22rem;{{ end }}">
                 <div class="transition-all duration-300" style="{{ if Data.DownloadPaused }}filter: blur(7px); -webkit-filter: blur(7px); opacity: 0.55; user-select: none; pointer-events: none;{{ end }}">
-                <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center">
-                    <div class="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center mr-3">
-                        <i class="fas fa-cloud-download-alt text-gray-600"></i>
+                <h2 class="text-xl font-bold w-text mb-6 flex items-center">
+                    <div class="w-10 h-10 w-sunken rounded-xl flex items-center justify-center mr-3">
+                        <i class="fas fa-cloud-download-alt w-text-2"></i>
                     </div>
                     下载资源
-                    <span class="ml-auto text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                    <span class="ml-auto text-sm font-normal w-text-3 w-sunken px-3 py-1 rounded-full">
                         共 {{ len(Data.DownloadList) }} 个网盘
                     </span>
                 </h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {{ range i, download := Data.DownloadList }}
-                    <div class="group flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-primary-200 hover:bg-primary-50/50 transition-all">
+                    <div class="group flex items-center justify-between p-4 w-sunken rounded-xl border w-border hover:border-primary-200 hover:bg-primary-50/50 transition-all">
                         <div class="flex items-center min-w-0 flex-1">
                             <div class="w-10 h-10 bg-gray-200 group-hover:bg-primary-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 transition-colors">
-                                <i class="fas fa-cloud text-gray-500 group-hover:text-primary-500 transition-colors"></i>
+                                <i class="fas fa-cloud w-text-3 group-hover:text-primary-500 transition-colors"></i>
                             </div>
                             <div class="min-w-0 flex-1">
-                                <h3 class="font-medium text-gray-900 truncate text-sm">{{ download.Type }}</h3>
+                                <h3 class="font-medium w-text truncate text-sm">{{ download.Type }}</h3>
                                 {{ if download.Password != "" }}
-                                <p class="text-xs text-gray-500 mt-0.5">
+                                <p class="text-xs w-text-3 mt-0.5">
                                     <i class="fas fa-key mr-1 opacity-60"></i>{{ download.Password }}
                                 </p>
                                 {{ else }}
-                                <p class="text-xs text-gray-400 mt-0.5">无密码</p>
+                                <p class="text-xs w-text-3 mt-0.5">无密码</p>
                                 {{ end }}
                             </div>
                         </div>
@@ -241,7 +241,7 @@
         <!-- Sidebar -->
         <aside class="w-full lg:w-80 flex-shrink-0">
             <!-- Software Info Card -->
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 sticky top-24 overflow-hidden">
+            <div class="w-surface rounded-2xl shadow-sm border w-border mb-6 sticky top-24 overflow-hidden">
                 {{ if Data.Thumbnail != "" }}
                 <div class="relative">
                     <img src="{{ Data.Thumbnail }}" alt="{{ Data.Title }}" class="w-full h-40 object-cover" loading="lazy" decoding="async" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgdmlld0JveD0iMCAwIDgwIDgwIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iODAiIGZpbGw9IiNlNWU3ZWIiLz48cGF0aCBkPSJNMTAgMzBoNjBWMTBoLTYwVjMwaDZ6bTAgNDBoNjB2NTBoLTYwVjcwaDZ6bTMwIDM1YzE2LjYyNyAwIDMwLTEzLjM3MyAzMC0zMHMtMTMuMzczLTMwLTMwLTMwLTMwIDEzLjM3My0zMCAzMCAxMy4zNzMgMzAgMzAgMzB6IiBmaWxsPSIjOTRhNmJjIi8+PHJlY3QgeD0iMjAiIHk9IjQ1IiB3aWR0aD0iNDAiIGhlaWdodD0iMjAiIGZpbGw9IiNmZmYiLz48L3N2Zz4='">
@@ -254,12 +254,12 @@
                     {{ if len(Data.SidebarInfo) > 0 }}
                     <div class="space-y-3 mb-5">
                         {{ range i, info := Data.SidebarInfo }}
-                        <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                            <div class="flex items-center text-gray-500 text-sm">
+                        <div class="flex items-center justify-between py-2 border-b w-border last:border-0">
+                            <div class="flex items-center w-text-3 text-sm">
                                 <i class="{{ info.Icon }} w-4 mr-2 text-primary-500"></i>
                                 <span>{{ info.Label }}</span>
                             </div>
-                            <span class="text-sm font-medium text-gray-900">{{ info.Value }}</span>
+                            <span class="text-sm font-medium w-text">{{ info.Value }}</span>
                         </div>
                         {{ end }}
                     </div>
@@ -285,17 +285,17 @@
             <!-- Related Articles -->
             {{ relatedArticles := Article().Limit(5).Order("views desc").ListByCategoryID(Data.CategoryID) }}
             {{ if len(relatedArticles) > 0 }}
-            <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
-                <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
+            <div class="w-surface rounded-2xl p-5 shadow-sm border w-border mb-6">
+                <h3 class="text-base font-bold w-text mb-4 flex items-center">
                     <i class="fas fa-fire text-orange-500 mr-2"></i>
                     相关推荐
                 </h3>
                 <div class="space-y-2">
                     {{ range i, v := relatedArticles }}
                     {{ if v.ID != Data.ID }}
-                    <a href="{{ v.URL() }}" class="block p-3 bg-gray-50 rounded-lg hover:bg-primary-50 transition-colors">
-                        <h4 class="font-medium text-gray-900 text-sm truncate">{{ v.Title }}</h4>
-                        <div class="flex items-center justify-between mt-1 text-xs text-gray-500">
+                    <a href="{{ v.URL() }}" class="block p-3 w-sunken rounded-lg hover:bg-primary-50 transition-colors">
+                        <h4 class="font-medium w-text text-sm truncate">{{ v.Title }}</h4>
+                        <div class="flex items-center justify-between mt-1 text-xs w-text-3">
                             <span>{{ v.CreateTimeFormat("2006-01-02") }}</span>
                             <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
                         </div>
@@ -309,8 +309,8 @@
             <!-- Tag Cloud -->
             {{ tagCloud := Widget.TagCloud() }}
             {{ if len(tagCloud) > 0 }}
-            <div class="bg-gradient-to-br from-primary-50/50 to-blue-50/50 rounded-2xl p-5 shadow-sm border border-primary-100/50">
-                <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
+            <div class="bg-gradient-to-br from-primary-50/50 to-blue-50/50 rounded-2xl p-5 shadow-sm border/50">
+                <h3 class="text-base font-bold w-text mb-4 flex items-center">
                     <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-blue-500 rounded-lg flex items-center justify-center mr-2">
                         <i class="fas fa-tags text-white text-sm"></i>
                     </div>
@@ -326,7 +326,7 @@
                     {{ else }}
                     {{ tagSize = "text-xs" }}
                     {{ end }}
-                    <a href="{{ t.URL() }}" class="inline-flex items-center px-3 py-1.5 bg-white text-gray-700 {{ tagSize }} rounded-full border border-gray-200 hover:border-primary-300 hover:bg-gradient-to-r hover:from-primary-50 hover:to-blue-50 hover:text-primary-700 transition-all duration-200 shadow-sm hover:shadow">
+                    <a href="{{ t.URL() }}" class="inline-flex items-center px-3 py-1.5 w-surface w-text-2 {{ tagSize }} rounded-full border w-border hover:border-primary-300 hover:bg-gradient-to-r hover:from-primary-50 hover:to-blue-50 hover:text-primary-600 transition-all duration-200 shadow-sm hover:shadow">
                         <i class="fas fa-hashtag mr-1 text-xs opacity-50"></i>{{ t.Name }}
                     </a>
                     {{ end }}
@@ -341,7 +341,7 @@
     // 图片加载失败时显示默认占位图
     document.addEventListener('DOMContentLoaded', function() {
         var defaultImg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgdmlld0JveD0iMCAwIDgwIDgwIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iODAiIGZpbGw9IiNlNWU3ZWIiLz48cGF0aCBkPSJNMTAgMzBoNjBWMTBoLTYwVjMwaDZ6bTAgNDBoNjB2NTBoLTYwVjcwaDZ6bTMwIDM1YzE2LjYyNyAwIDMwLTEzLjM3MyAzMC0zMHMtMTMuMzczLTMwLTMwLTMwLTMwIDEzLjM3My0zMCAzMCAxMy4zNzMgMzAgMzAgMzB6IiBmaWxsPSIjOTRhNmJjIi8+PHJlY3QgeD0iMjAiIHk9IjQ1IiB3aWR0aD0iNDAiIGhlaWdodD0iMjAiIGZpbGw9IiNmZmYiLz48L3N2Zz4=';
-        var images = document.querySelectorAll('.article-content img, .bg-white img');
+        var images = document.querySelectorAll('.article-content img, .w-surface img');
         for (var i = 0; i < images.length; i++) {
             (function(img) {
                 img.onerror = function() {

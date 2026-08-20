@@ -25,10 +25,10 @@
     
     <!-- Breadcrumb -->
     <nav class="mb-6" aria-label="面包屑导航">
-        <ol class="flex items-center space-x-2 text-sm text-gray-500">
+        <ol class="flex items-center space-x-2 text-sm w-text-3">
             <li><a href="/" class="hover:text-primary-600 transition-colors">首页</a></li>
             <li><i class="fas fa-chevron-right text-xs" aria-hidden="true"></i></li>
-            <li class="text-gray-900" aria-current="page">{{ Data.Name }}</li>
+            <li class="w-text" aria-current="page">{{ Data.Name }}</li>
         </ol>
     </nav>
 
@@ -39,8 +39,8 @@
                 <i class="fas fa-tag text-white text-2xl"></i>
             </div>
             <div>
-                <h1 class="text-2xl md:text-3xl font-bold text-gray-900">{{ Data.Name }}</h1>
-                <p class="text-sm text-gray-500 mt-1">共 {{ res.Count }} 篇文章</p>
+                <h1 class="text-2xl md:text-3xl font-bold w-text">{{ Data.Name }}</h1>
+                <p class="text-sm w-text-3 mt-1">共 {{ res.Count }} 篇文章</p>
             </div>
         </div>
     </div>
@@ -49,10 +49,10 @@
     {{ tagCloud := Widget.TagCloud() }}
     {{ if len(tagCloud) > 0 }}
     <div class="mb-8">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">热门标签</h2>
+        <h2 class="text-lg font-semibold w-text mb-4">热门标签</h2>
         <div class="flex flex-wrap gap-3">
             {{ range i, v := tagCloud }}
-            <a href="{{ v.URL() }}" class="category-tag px-4 py-2 bg-white border border-gray-200 rounded-full text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all {{ if v.ID == Data.ID }}bg-primary-100 border-primary-300 text-primary-700{{ end }}">
+            <a href="{{ v.URL() }}" class="category-tag px-4 py-2 w-surface border w-border rounded-full w-text-2 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all {{ if v.ID == Data.ID }}bg-primary-100 border-primary-300 w-link{{ end }}">
                 <i class="fas fa-hashtag mr-1 text-sm"></i>
                 {{ v.Name }}
             </a>
@@ -66,29 +66,29 @@
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {{ range i, v := res.List }}
         {{ tags := Tag().Limit(2).ListByArticleID(v.ID) }}
-        <a href="{{ v.URL() }}" class="bg-white rounded-xl p-4 border border-gray-200 card-hover hover:shadow-lg block">
+        <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border card-hover hover:shadow-lg block">
             {{ if v.Thumbnail != "" }}
             <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-full h-40 object-cover rounded-lg mb-3" loading="lazy" decoding="async">
             {{ else }}
-            <div class="w-full h-40 bg-gradient-to-br from-primary-100 to-secondary-100 rounded-lg mb-3 flex items-center justify-center" aria-hidden="true">
+            <div class="w-full h-40 w-sunken rounded-lg mb-3 flex items-center justify-center" aria-hidden="true">
                 <i class="fas fa-cube text-4xl text-primary-300"></i>
             </div>
             {{ end }}
-            <h3 class="font-semibold text-gray-900 text-base mb-2 line-clamp-2">
+            <h3 class="font-semibold w-text text-base mb-2 line-clamp-2">
                 {{ if v.ContentType == "video" }}<span class="type-badge type-badge-video">视频</span>{{ else if v.ContentType == "novel" }}<span class="type-badge type-badge-novel">小说</span>{{ else if v.ContentType == "image" }}<span class="type-badge type-badge-image">图片</span>{{ end }}
                 {{ v.Title }}
             </h3>
             {{ if v.Description != "" }}
-            <p class="text-sm text-gray-500 line-clamp-2 mb-2">{{ v.Description }}</p>
+            <p class="text-sm w-text-3 line-clamp-2 mb-2">{{ v.Description }}</p>
             {{ end }}
             {{ if len(tags) > 0 }}
             <div class="flex flex-wrap gap-2 mb-2">
                 {{ range i, t := tags }}
-                <span class="px-2 py-1 bg-primary-100 text-primary-700 text-xs rounded-full">{{ t.Name }}</span>
+                <span class="px-2 py-1 w-tag text-xs rounded-full">{{ t.Name }}</span>
                 {{ end }}
             </div>
             {{ end }}
-            <div class="flex items-center justify-between text-xs text-gray-400">
+            <div class="flex items-center justify-between text-xs w-text-3">
                 <span>{{ v.CreateTimeFormat() }}</span>
                 <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
             </div>
@@ -101,21 +101,21 @@
     {{ if res.PageTotal > 1 }}
     <div class="flex justify-center items-center space-x-2">
         {{ if Page.PageNumber > 1 }}
-        <a href="{{ Data.PageURL(Page.PageNumber - 1) }}" class="px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
+        <a href="{{ Data.PageURL(Page.PageNumber - 1) }}" class="px-4 py-2 w-surface border w-border rounded-lg w-text-2 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
             <i class="fas fa-chevron-left mr-1"></i>上一页
         </a>
         {{ end }}
         
         {{ range i, p := ints(pagination.Begin, pagination.End+1) }}
             {{ if p == Page.PageNumber }}
-            <span class="px-4 py-2 bg-gradient-to-r from-primary-500 to-secondary-500 text-white rounded-lg shadow-md">{{ p }}</span>
+            <span class="px-4 py-2 w-gradient-hero text-white rounded-lg shadow-md">{{ p }}</span>
             {{ else }}
-            <a href="{{ Data.PageURL(p) }}" class="px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">{{ p }}</a>
+            <a href="{{ Data.PageURL(p) }}" class="px-4 py-2 w-surface border w-border rounded-lg w-text-2 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">{{ p }}</a>
             {{ end }}
         {{ end }}
         
         {{ if res.ExistNextPage }}
-        <a href="{{ Data.PageURL(Page.PageNumber + 1) }}" class="px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
+        <a href="{{ Data.PageURL(Page.PageNumber + 1) }}" class="px-4 py-2 w-surface border w-border rounded-lg w-text-2 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
             下一页<i class="fas fa-chevron-right ml-1"></i>
         </a>
         {{ end }}
@@ -123,12 +123,12 @@
     {{ end }}
     {{ else }}
     <!-- Empty State -->
-    <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-12 text-center">
-        <div class="w-20 h-20 bg-gradient-to-br from-blue-100 to-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+    <div class="w-sunken rounded-2xl p-12 text-center">
+        <div class="w-20 h-20 w-sunken rounded-full flex items-center justify-center mx-auto mb-6">
             <i class="fas fa-tag text-primary-500 text-2xl"></i>
         </div>
-        <h3 class="text-xl font-semibold text-gray-900 mb-2">暂无文章</h3>
-        <p class="text-gray-500 text-sm">该标签下还没有文章，敬请期待！</p>
+        <h3 class="text-xl font-semibold w-text mb-2">暂无文章</h3>
+        <p class="w-text-3 text-sm">该标签下还没有文章，敬请期待！</p>
     </div>
     {{ end }}
 </div>

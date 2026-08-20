@@ -25,6 +25,19 @@
 
 `index.html` 读取 slug 为 `video` / `novel` / `image` 的分类（运营约定，可在后台任意改 slug 后调整模板内 `GetBySlug` 参数），各展示最新条目；分类不存在时板块自动隐藏。
 
+## 子菜单（子分类）显示场景
+
+子分类（后台把分类的父级设为顶级类型分类）自动出现在四个场景，无需任何配置：
+
+| 场景 | 位置 | 形态 |
+|------|------|------|
+| 主导航下拉 | 顶栏菜单 hover | 子项带类型色图标（film/book/images） |
+| 移动端菜单 | 汉堡菜单 | 父项图标 + 缩进左色条列表 |
+| **分类页筛选 tab 条** | 标题横幅下方 | 胶囊 tab、当前分类高亮、**类型色激活**（video=红/novel=青/image=绿）；浏览子分类时显示兄弟分类 + "全部"回父级；移动端横向滑动 |
+| 首页类型入口卡 | 三入口大卡内 | 最多 4 个子分类直达小链接 |
+
+子分类的 `content_type` 建议与父级一致（后台手动设置），列表布局随类型走。
+
 ## 模板开发注意（Jet v6 陷阱）
 
 - **空值判断**：对可空对象/any 一律用 truthiness（`{{if x}}`）或 `{{if len(x) > 0}}`，**不要用 `{{if x != nil}}`**（对 typed-nil 指针与 any 包装的空切片会误判为真，曾导致空库 500）
@@ -33,15 +46,30 @@
 
 ## 样式
 
-新布局样式集中追加在 `public/style.css`（分区注释 `category: video|novel|image`、`article: ...`、移动端 @media）。
-**`tailwind.css` 是预编译产物**——模板中新写的 Tailwind 原子类不会生效，新样式一律写自定义类进 style.css。
+**Cinema Dark 设计系统（v2，ui-ux-pro-max）**——暗色影院皮肤，全站自定义于 `public/style.css`：
 
-### 无障碍与触控规范（ui-ux-pro-max 审查后固化）
+| Token | 值 | 用途 |
+|-------|----|------|
+| 页面底 | `#0b0d12` | body 背景 |
+| 卡片面 | `#151823`（`w-surface`） | 卡片/面板 |
+| 悬浮面 | `#1c2030`（`w-sunken`） | 凹陷区/输入底 |
+| 边框 | `#262b3d`（`w-border`） | 分隔线 |
+| 主文字 | `#f1f3f7`（`w-text`） | 标题 |
+| 次文字 | `#aeb6c8`（`w-text-2`） | 正文 |
+| 弱文字 | `#8b93a7`（`w-text-3`） | 元信息（≥4.5:1） |
+| Play Red | `#e11d48`（CTA）/ `#fb7185`（链接 `w-link`） | 品牌主色 |
+| 类型色 | video=rose `#fb7185` · novel=sky `#7dd3fc` · image=emerald `#6ee7b7` | 全站内容类型编码 |
 
-- 辅助文字色不低于 `#6b7280`（4.8:1）；勿再用 `#9ca3af` 作正文/元信息色
-- 所有可交互元素（含 `<button>`）显式 `cursor: pointer`，键盘焦点环 2px `#00aaff`（outline-offset 3px）
-- 触控目标：选集按钮 min-height 40px、章节导航 44px；新增按钮遵循同标准
-- 动效一律补 `prefers-reduced-motion: reduce` 降级（hover 位移置 none）
+**模板类名约定**：模板中亮色 Tailwind 类已替换为语义类（`w-surface/w-text/w-text-2/w-text-3/w-border/w-tag/w-link/w-sunken/w-gradient-hero`），新模板请继续使用语义类，勿引入 `bg-white`/`text-gray-*` 等亮色类。小说阅读区用 `novel-paper`（亮纸 `#faf8f4`，长文对比 13:1）。
+
+**`tailwind.css` 是预编译产物**——新 Tailwind 原子类不会生效，新样式一律写自定义类进 style.css。
+
+### 无障碍与触控规范
+
+- 弱文字不低于 `#8b93a7`（4.5:1）；勿再用更浅色作正文
+- 所有可交互元素显式 `cursor: pointer`，键盘焦点环 2px `#fb7185`（outline-offset 3px）
+- 触控目标：选集按钮 min-height 40px、章节导航 44px
+- 动效一律补 `prefers-reduced-motion: reduce` 降级
 - 当前选集以 `▶` 前缀 + 填色双重指示（不依赖颜色单一通道）
 - 小说正文限宽 44em 控制行长
 

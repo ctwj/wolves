@@ -1,6 +1,6 @@
 {{block articleImage()}}
 {* 图片浏览页：图集全量网格 + 点击放大（原生灯箱，无外部库） *}
-<div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+<div class="w-surface rounded-2xl p-6 md:p-8 shadow-sm border w-border mb-6">
     {{ if len(Data.ImageList) > 0 }}
     <div class="image-viewer-grid">
         {{ range i, img := Data.ImageList }}
@@ -11,13 +11,13 @@
         {{ end }}
     </div>
     {{ if Data.Content != "" }}
-    <div class="prose prose-lg max-w-none article-content mt-6 pt-6 border-t border-gray-100">
+    <div class="prose prose-lg max-w-none article-content mt-6 pt-6 border-t w-border">
         {{ Data.Content | raw }}
     </div>
     {{ end }}
     {{ else }}
-    <div class="text-center py-12 text-gray-500">
-        <i class="fas fa-images text-4xl mb-4 text-gray-300"></i>
+    <div class="text-center py-12 w-text-3">
+        <i class="fas fa-images text-4xl mb-4 w-text-3"></i>
         <p>暂无图片</p>
     </div>
     {{ end }}
