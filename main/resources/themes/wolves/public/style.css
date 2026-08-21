@@ -828,3 +828,223 @@ a.novel-nav-btn:focus-visible,
     gap: 6px;
     text-decoration: none;
 }
+
+/* ---------- 首页内容聚合预览区（三 Tab 免跳转浏览） ---------- */
+.home-showcase {
+    background: var(--w-surface);
+    border: 1px solid var(--w-border);
+    border-radius: 1rem;
+    padding: 1.25rem 1.25rem 1.5rem;
+}
+.home-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--w-border);
+    padding-bottom: 0.9rem;
+    margin-bottom: 1.1rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.home-tabs::-webkit-scrollbar { display: none; }
+.home-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    min-height: 44px;
+    padding: 8px 22px;
+    border-radius: 999px;
+    border: 1px solid var(--w-border);
+    background: var(--w-raised);
+    color: var(--w-text-2);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.home-tab:hover { color: var(--w-text); border-color: #3a4360; }
+.home-tab:active { transform: translateY(1px); }
+.home-tab:focus-visible {
+    outline: 2px solid var(--w-red-strong);
+    outline-offset: 2px;
+}
+.home-tab-video.active {
+    background: var(--w-red);
+    border-color: var(--w-red);
+    color: #fff;
+    box-shadow: 0 0 18px -2px rgba(225, 29, 72, 0.5);
+}
+.home-tab-novel.active {
+    background: #0e7490;
+    border-color: #0e7490;
+    color: #fff;
+    box-shadow: 0 0 18px -2px rgba(14, 116, 144, 0.55);
+}
+.home-tab-image.active {
+    background: #047857;
+    border-color: #047857;
+    color: #fff;
+    box-shadow: 0 0 18px -2px rgba(4, 120, 87, 0.55);
+}
+.home-panel-more {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.1rem;
+}
+.home-panel-more a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px 24px;
+    border-radius: 999px;
+    border: 1px dashed var(--w-border);
+    color: var(--w-text-2);
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease;
+}
+.home-panel-more a:hover {
+    color: var(--w-red-strong);
+    border-color: var(--w-red-strong);
+}
+.home-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--w-text-3);
+    font-size: 0.9rem;
+}
+@media (prefers-reduced-motion: reduce) {
+    .home-tab, .home-panel-more a { transition: none; }
+    .home-tab:active { transform: none; }
+}
+
+/* ---------- 顶部子菜单平铺条（常驻显示所有子分类） ---------- */
+.subnav {
+    border-top: 1px solid var(--w-border);
+    background: rgba(9, 11, 16, 0.88);
+}
+.subnav-inner {
+    display: flex;
+    align-items: center;
+    gap: 1.4rem;
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 0.42rem 1rem 0.42rem 2rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.subnav-inner::-webkit-scrollbar { display: none; }
+.subnav-group {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    white-space: nowrap;
+    flex: none;
+}
+.subnav-group + .subnav-group {
+    border-left: 1px solid var(--w-border);
+    padding-left: 1.4rem;
+}
+.subnav-group-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--w-text-2);
+    min-height: 28px;
+}
+.subnav-group-name:hover { color: var(--w-text); }
+.nav-ico-folder { color: var(--w-text-3); }
+.subnav-link {
+    font-size: 0.8rem;
+    color: var(--w-text-3);
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    transition: color 0.2s ease;
+}
+.subnav-link:hover { color: var(--w-text); }
+.subnav-link:focus-visible {
+    outline: 2px solid var(--w-red-strong);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.subnav { display: none; }
+@media (min-width: 768px) {
+    .subnav { display: block; }
+}
+
+
+/* subnav 独立 fixed（紧贴主行下方，规避 nav 内嵌套失衡） */
+.subnav {
+    position: fixed;
+    top: 4rem;
+    left: 0;
+    right: 0;
+    z-index: 49;
+    backdrop-filter: blur(14px);
+}
+
+/* 双行导航（主行+子菜单平铺条）下的内容留白（替代未编译的 Tailwind pt-28/pt-36） */
+.w-hero-pt { padding-top: 7.5rem; }
+.w-main-pt { padding-top: 8.5rem; }
+@media (max-width: 767px) {
+    .w-hero-pt { padding-top: 4rem; }
+    .w-main-pt { padding-top: 6rem; }
+}
+
+/* subnav 全部平铺：自动换行（子菜单多时多行全部显示，不滚动截断） */
+.subnav-inner {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+}
+.subnav-group { white-space: normal; }
+
+/* 导航高度动态同步：JS 量取实际高度写入 --nav-h，内容留白据此计算（替代固定 pt） */
+.w-main-pt { padding-top: calc(var(--nav-h, 107px) + 1.5rem) !important; }
+.w-hero-pt { padding-top: calc(var(--nav-h, 107px) + 0.5rem) !important; }
+
+/* subnav 按类别分行：每个大类别独占一行（组内子分类横向排列，多时组内换行） */
+.subnav-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-top: 0.3rem;
+    padding-bottom: 0.35rem;
+}
+.subnav-group {
+    width: 100%;
+    flex-wrap: wrap;
+    row-gap: 0.15rem;
+    padding: 0.18rem 0;
+}
+.subnav-group + .subnav-group {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid rgba(38, 43, 61, 0.6);
+}
+
+/* subnav 改为文档流内：随页面上滑滚走（仅主行保持 fixed），顶部让位主行高度 */
+.subnav {
+    position: static;
+    margin-top: var(--nav-h, 4rem);
+    z-index: auto;
+    backdrop-filter: none;
+    background: var(--w-bg);
+    border-bottom: 1px solid var(--w-border);
+    border-top: none;
+}
+/* 流内 subnav 已占位，桌面端内容只需小余量；移动端 subnav 隐藏则避开主行 */
+.w-main-pt { padding-top: 1.5rem !important; }
+.w-hero-pt { padding-top: 0.75rem !important; }
+@media (max-width: 767px) {
+    .w-main-pt { padding-top: calc(var(--nav-h, 4rem) + 1.5rem) !important; }
+    .w-hero-pt { padding-top: calc(var(--nav-h, 4rem) + 0.5rem) !important; }
+}
+
+/* subnav 仅首页渲染：其他页面无流内占位，内容留白恢复避开固定主行 */
+.w-main-pt { padding-top: calc(var(--nav-h, 4rem) + 1.5rem) !important; }

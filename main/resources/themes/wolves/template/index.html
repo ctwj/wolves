@@ -1,64 +1,84 @@
 {{extends "./layout/layout.html"}}
+{{import "./component/category/video.html"}}
+{{import "./component/category/novel.html"}}
+{{import "./component/category/image.html"}}
 
 {{block main()}}
-<!-- 类型入口大卡：视频 / 小说 / 图片 -->
-{{ videoEntryCat := Category().GetBySlug("video") }}
-{{ novelEntryCat := Category().GetBySlug("novel") }}
-{{ imageEntryCat := Category().GetBySlug("image") }}
-{{ if videoEntryCat || novelEntryCat || imageEntryCat }}
-<div class="type-entry-grid mb-12">
-    {{ if videoEntryCat }}
-    {{ videoEntryChildren := Category().Children(videoEntryCat.ID) }}
-    <div class="type-entry type-entry-video">
-        <a href="{{ videoEntryCat.URL() }}" class="type-entry-block">
-            <i class="fas fa-film type-entry-icon" aria-hidden="true"></i>
-            <span class="type-entry-title">视频</span>
-            <span class="type-entry-desc">剧集与影片在线观看</span>
-        </a>
-        {{ if len(videoEntryChildren) > 0 }}
-        <div class="type-entry-links">
-            {{ range i, c := videoEntryChildren }}{{ if i < 4 }}<a href="{{ c.URL() }}">{{ c.Name }}</a>{{ end }}{{ end }}
+{* 内容聚合预览区：首页顶部直接浏览三类最新内容（Tab 免跳转切换），复用分类页布局组件 *}
+{{ videoCat := Category().GetBySlug("video") }}
+{{ novelCat := Category().GetBySlug("novel") }}
+{{ imageCat := Category().GetBySlug("image") }}
+{{ if videoCat || novelCat || imageCat }}
+<section class="home-showcase mb-12" x-data="{tab: '{{ if videoCat }}video{{ else if novelCat }}novel{{ else }}image{{ end }}'}">
+    <div class="home-tabs" role="tablist" aria-label="内容分类浏览">
+        {{ if videoCat }}
+        <button type="button" class="home-tab home-tab-video" role="tab"
+                :class="tab==='video' ? 'active' : ''" :aria-selected="tab==='video'" @click="tab='video'">
+            <i class="fas fa-film" aria-hidden="true"></i>视频
+        </button>
+        {{ end }}
+        {{ if novelCat }}
+        <button type="button" class="home-tab home-tab-novel" role="tab"
+                :class="tab==='novel' ? 'active' : ''" :aria-selected="tab==='novel'" @click="tab='novel'">
+            <i class="fas fa-book" aria-hidden="true"></i>小说
+        </button>
+        {{ end }}
+        {{ if imageCat }}
+        <button type="button" class="home-tab home-tab-image" role="tab"
+                :class="tab==='image' ? 'active' : ''" :aria-selected="tab==='image'" @click="tab='image'">
+            <i class="fas fa-images" aria-hidden="true"></i>图片
+        </button>
+        {{ end }}
+    </div>
+
+    {{ if videoCat }}
+    {{ videoList := Widget.CategoryPageList(videoCat.ID, 1).List }}
+    <div x-show="tab==='video'" x-cloak role="tabpanel">
+        {{ if len(videoList) > 0 }}
+        {{yield categoryVideo(list=videoList)}}
+        <div class="home-panel-more">
+            <a href="{{ videoCat.URL() }}">查看全部视频 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></a>
         </div>
+        {{ else }}
+        <div class="home-empty">视频内容筹备中，敬请期待</div>
         {{ end }}
     </div>
     {{ end }}
-    {{ if novelEntryCat }}
-    {{ novelEntryChildren := Category().Children(novelEntryCat.ID) }}
-    <div class="type-entry type-entry-novel">
-        <a href="{{ novelEntryCat.URL() }}" class="type-entry-block">
-            <i class="fas fa-book type-entry-icon" aria-hidden="true"></i>
-            <span class="type-entry-title">小说</span>
-            <span class="type-entry-desc">长篇连载分章阅读</span>
-        </a>
-        {{ if len(novelEntryChildren) > 0 }}
-        <div class="type-entry-links">
-            {{ range i, c := novelEntryChildren }}{{ if i < 4 }}<a href="{{ c.URL() }}">{{ c.Name }}</a>{{ end }}{{ end }}
+
+    {{ if novelCat }}
+    {{ novelList := Widget.CategoryPageList(novelCat.ID, 1).List }}
+    <div x-show="tab==='novel'" x-cloak role="tabpanel">
+        {{ if len(novelList) > 0 }}
+        {{yield categoryNovel(list=novelList)}}
+        <div class="home-panel-more">
+            <a href="{{ novelCat.URL() }}">查看全部小说 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></a>
         </div>
+        {{ else }}
+        <div class="home-empty">小说内容筹备中，敬请期待</div>
         {{ end }}
     </div>
     {{ end }}
-    {{ if imageEntryCat }}
-    {{ imageEntryChildren := Category().Children(imageEntryCat.ID) }}
-    <div class="type-entry type-entry-image">
-        <a href="{{ imageEntryCat.URL() }}" class="type-entry-block">
-            <i class="fas fa-images type-entry-icon" aria-hidden="true"></i>
-            <span class="type-entry-title">图片</span>
-            <span class="type-entry-desc">高清图集浏览收藏</span>
-        </a>
-        {{ if len(imageEntryChildren) > 0 }}
-        <div class="type-entry-links">
-            {{ range i, c := imageEntryChildren }}{{ if i < 4 }}<a href="{{ c.URL() }}">{{ c.Name }}</a>{{ end }}{{ end }}
+
+    {{ if imageCat }}
+    {{ imageList := Widget.CategoryPageList(imageCat.ID, 1).List }}
+    <div x-show="tab==='image'" x-cloak role="tabpanel">
+        {{ if len(imageList) > 0 }}
+        {{yield categoryImage(list=imageList)}}
+        <div class="home-panel-more">
+            <a href="{{ imageCat.URL() }}">查看全部图片 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></a>
         </div>
+        {{ else }}
+        <div class="home-empty">图片内容筹备中，敬请期待</div>
         {{ end }}
     </div>
     {{ end }}
-</div>
+</section>
 {{ end }}
 
 <!-- Recommendation Cards -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
     <!-- Guess You Like -->
-    <div class="w-surface">
+    <div class="w-surface rounded-2xl p-6 border w-border">
         <h2 class="text-xl font-semibold w-text mb-4 flex items-center">
             <i class="fas fa-heart text-red-500 mr-2"></i>
             猜你喜欢
@@ -81,9 +101,9 @@
             {{ end }}
         </div>
     </div>
-    
+
     <!-- Recent Updates -->
-    <div class="w-surface">
+    <div class="w-surface rounded-2xl p-6 border w-border">
         <h2 class="text-xl font-semibold w-text mb-4 flex items-center">
             <i class="fas fa-sync-alt text-blue-500 mr-2"></i>
             最近更新
@@ -97,9 +117,9 @@
             {{ end }}
         </div>
     </div>
-    
+
     <!-- Hot Recommendations -->
-    <div class="w-surface">
+    <div class="w-surface rounded-2xl p-6 border w-border">
         <h2 class="text-xl font-semibold w-text mb-4 flex items-center">
             <i class="fas fa-fire text-orange-500 mr-2"></i>
             热门推荐
@@ -115,119 +135,13 @@
     </div>
 </div>
 
-<!-- Video Zone Section -->
-{{ videoCat := Category().GetBySlug("video") }}
-{{ if videoCat }}
-{{ videoList := Widget.CategoryPageList(videoCat.ID, 1).List }}
-{{ if len(videoList) > 0 }}
-<section class="mb-12">
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold w-text flex items-center"><i class="fas fa-film text-primary-500 mr-3" aria-hidden="true"></i>最新视频</h2>
-        <a href="{{ videoCat.URL() }}" class="text-sm w-link hover:text-primary-600 flex items-center">
-            查看更多 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i>
-        </a>
-    </div>
-    <div class="video-grid">
-        {{ range i, v := videoList }}
-        {{ src := v.Extends.Get("video_sources") }}
-        <a href="{{ v.URL() }}" class="video-card">
-            <div class="video-cover">
-                {{ if v.Thumbnail != "" }}
-                <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />
-                {{ else }}
-                <div class="video-cover-placeholder"><i class="fas fa-film" aria-hidden="true"></i></div>
-                {{ end }}
-                {{ if src }}<span class="video-ep-badge">{{ len(src) }} 集</span>{{ end }}
-                <span class="video-play-overlay"><i class="fas fa-play" aria-hidden="true"></i></span>
-            </div>
-            <div class="video-info">
-                <h3 class="video-title">{{ v.Title }}</h3>
-                <div class="video-meta"><span><i class="fas fa-calendar-alt mr-1" aria-hidden="true"></i>{{ v.CreateTimeFormat("2006-01-02") }}</span></div>
-            </div>
-        </a>
-        {{ end }}
-    </div>
-</section>
-{{ end }}
-{{ end }}
-
-<!-- Novel Zone Section -->
-{{ novelCat := Category().GetBySlug("novel") }}
-{{ if novelCat }}
-{{ novelList := Widget.CategoryPageList(novelCat.ID, 1).List }}
-{{ if len(novelList) > 0 }}
-<section class="mb-12">
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold w-text flex items-center"><i class="fas fa-book text-primary-500 mr-3" aria-hidden="true"></i>最新小说</h2>
-        <a href="{{ novelCat.URL() }}" class="text-sm w-link hover:text-primary-600 flex items-center">
-            查看更多 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i>
-        </a>
-    </div>
-    <div class="novel-list">
-        {{ range i, v := novelList }}
-        <a href="{{ v.URL() }}" class="novel-item">
-            <div class="novel-cover">
-                {{ if v.Thumbnail != "" }}
-                <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />
-                {{ else }}
-                <div class="novel-cover-placeholder"><i class="fas fa-book" aria-hidden="true"></i></div>
-                {{ end }}
-            </div>
-            <div class="novel-detail">
-                <h3 class="novel-title">{{ v.Title }}</h3>
-                <p class="novel-desc">{{ v.Description }}</p>
-            </div>
-            <div class="novel-action">
-                <span class="novel-read-btn">开始阅读<i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></span>
-            </div>
-        </a>
-        {{ end }}
-    </div>
-</section>
-{{ end }}
-{{ end }}
-
-<!-- Image Zone Section -->
-{{ imageCat := Category().GetBySlug("image") }}
-{{ if imageCat }}
-{{ imageList := Widget.CategoryPageList(imageCat.ID, 1).List }}
-{{ if len(imageList) > 0 }}
-<section class="mb-12">
-    <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold w-text flex items-center"><i class="fas fa-images text-primary-500 mr-3" aria-hidden="true"></i>最新图片</h2>
-        <a href="{{ imageCat.URL() }}" class="text-sm w-link hover:text-primary-600 flex items-center">
-            查看更多 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i>
-        </a>
-    </div>
-    <div class="gallery-grid">
-        {{ range i, v := imageList }}
-        {{ imgs := v.Extends.Get("gallery_images") }}
-        <a href="{{ v.URL() }}" class="gallery-card">
-            <div class="gallery-thumb">
-                {{ if v.Thumbnail != "" }}
-                <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />
-                {{ else if imgs }}
-                    {{ range j, img := imgs }}{{ if j == 0 }}<img src="{{ img }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />{{ end }}{{ end }}
-                {{ else }}
-                <div class="gallery-thumb-placeholder"><i class="fas fa-images" aria-hidden="true"></i></div>
-                {{ end }}
-                {{ if imgs }}<span class="gallery-count-badge">{{ len(imgs) }} 张</span>{{ end }}
-            </div>
-            <div class="gallery-info"><h3 class="gallery-title">{{ v.Title }}</h3></div>
-        </a>
-        {{ end }}
-    </div>
-</section>
-{{ end }}
-{{ end }}
-
 <!-- Software Download Section -->
 {{ res := Widget.IndexList() }}
 <section class="mb-12">
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold w-text">软件下载</h2>
     </div>
-    
+
     <!-- Category Tags -->
     <div class="flex flex-wrap gap-3 mb-6">
         {{ range i, v := Category().List() }}
@@ -236,7 +150,7 @@
         </a>
         {{ end }}
     </div>
-    
+
     <!-- Software Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {{ range i, v := res }}
@@ -278,7 +192,7 @@
             查看更多 <i class="fas fa-chevron-right ml-1 text-xs"></i>
         </a>
     </div>
-    
+
     <!-- Article List -->
     {{ tutorialCat := Category().GetBySlug("tutorial") }}
     {{ globalList := Widget.GlobalList() }}

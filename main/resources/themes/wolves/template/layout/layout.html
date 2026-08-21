@@ -76,7 +76,8 @@
 <body x-data="{ showMobileMenu: false }">
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary-500 focus:text-white focus:rounded-lg">跳转到主要内容</a>
     <header>
-        <nav class="glass-nav fixed top-0 left-0 right-0 z-50 min-h-16 flex items-center justify-between px-4 md:px-8 shadow-sm" role="navigation" aria-label="主导航">
+        <nav class="glass-nav fixed top-0 left-0 right-0 z-50 shadow-sm" role="navigation" aria-label="主导航">
+        <div class="min-h-16 flex items-center justify-between px-4 md:px-8">
             <div class="flex items-center space-x-2 flex-shrink-0">
                 <a href="/" class="flex items-center space-x-2" aria-label="返回首页">
                     {{ logo := Widget.LogoURL() }}
@@ -170,7 +171,27 @@
                 <i class="fas fa-bars text-xl" aria-hidden="true"></i>
             </button>
         </div>
-    </nav>
+
+        {* 子菜单平铺条：仅首页显示（暂时），每个大类别一行、随页滚动 *}
+        </nav>
+        {{ if Page.Name == "index" }}
+        <div class="subnav" aria-label="子分类快捷导航">
+            <div class="subnav-inner">
+                {{ range i, v := Widget.Menu() }}
+                {{ if len(v.Children) > 0 }}
+                <div class="subnav-group">
+                    <a href="{{ v.URL() }}" class="subnav-group-name">
+                        <i class="fas {{ if v.ContentType == "video" }}fa-film nav-ico-video{{ else if v.ContentType == "novel" }}fa-book nav-ico-novel{{ else if v.ContentType == "image" }}fa-images nav-ico-image{{ else }}fa-folder nav-ico-folder{{ end }}" aria-hidden="true"></i>{{ v.Name }}
+                    </a>
+                    {{ range j, child := v.Children }}
+                    <a href="{{ child.URL() }}" class="subnav-link">{{ child.Name }}</a>
+                    {{ end }}
+                </div>
+                {{ end }}
+                {{ end }}
+            </div>
+        </div>
+        {{ end }}
     </header>
 
     <div id="mobile-menu"
@@ -211,7 +232,7 @@
     </div>
 
     {{ if Page.Name == `index` }}
-    <section class="hero-bg pt-16 h-96 flex items-center relative overflow-hidden">
+    <section class="hero-bg w-hero-pt h-96 flex items-center relative overflow-hidden">
         <div class="absolute inset-0 opacity-10">
             <div class="absolute top-20 left-10 w-96 h-96 bg-gradient-to-r from-primary-300 to-secondary-300 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
             <div class="absolute top-40 right-20 w-96 h-96 bg-gradient-to-r from-secondary-300 to-primary-300 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000"></div>
@@ -226,18 +247,20 @@
     </section>
     {{ end }}
 
-    <main id="main-content" class="{{ if Page.Name == `index` }}container mx-auto px-4 md:px-8 py-12 -mt-32 relative z-20{{ else }}pt-24 pb-12 px-4 md:px-8{{ end }}" role="main">
+    <main id="main-content" class="{{ if Page.Name == `index` }}container mx-auto px-4 md:px-8 py-12 -mt-32 relative z-20{{ else }}w-main-pt pb-12 px-4 md:px-8{{ end }}" role="main">
         {{yield main()}}
     </main>
 
     <footer class="bg-gradient-to-r from-gray-900 to-gray-800 text-white py-8 mt-16" role="contentinfo">
         <div class="container mx-auto px-4 md:px-8">
 
-            {{ cats := Category().Limit(10).List() }}
+            {{ cats := Category().List() }}
 
             <div class="flex flex-wrap justify-center items-center gap-4 mb-6">
                 {{ range i, c := cats }}
+                {{ if c.ParentID == 0 }}
                 <a href="{{ c.URL() }}" class="text-sm w-text-3 hover:text-white transition-colors">{{ c.Name }}</a>
+                {{ end }}
                 {{ end }}
                 <a href="{{ Config.Router.GetSitemapPath() }}/article.xml" class="text-sm w-text-3 hover:text-white transition-colors">Sitemap</a>
                 {{ if Config.AISEO.RSSEnable }}
@@ -278,7 +301,20 @@
     </footer>
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    
+
+    {* 导航高度动态同步：仅主行（fixed）计入 --nav-h；subnav 为文档流内元素随页滚动，不占固定层 *}
+    <script>
+    (function() {
+        function syncNavSpace() {
+            var nav = document.querySelector('.glass-nav');
+            if (!nav) return;
+            document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
+        }
+        syncNavSpace();
+        window.addEventListener('resize', syncNavSpace);
+    })();
+    </script>
+
     <!-- 图片加载失败处理：自动替换为默认图标 -->
     <script>
     (function() {
