@@ -53,6 +53,7 @@ func initPlugins() {
 		plugins.NewPostStore(),
 		// plugins.NewDidiAuto(),
 		plugins.NewGnDownSpider(),
+		plugins.NewHeadlessSpider(),
 		plugins.NewDownloadLimit(),
 		plugins.NewBaiduCloudTransfer(),
 		plugins.NewQuarkCloudTransfer(),

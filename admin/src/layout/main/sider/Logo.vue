@@ -2,7 +2,7 @@
   <div class="logo overflow-hidden w-full flex items-center" :style="{height:store.headerHeight+'px'}">
     <img class="logo_icon block m-auto" v-if="store.siderCollapsed" width="30" height="30" src="@/assets/logo_small.png" alt="moss" />
     <template v-else>
-      <div class="w-full text-center logo_text">08RJ</div>
+      <div class="w-full text-center logo_text">WOLVES</div>
     </template>
   </div>
 </template>
