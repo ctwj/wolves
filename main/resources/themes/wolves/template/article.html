@@ -1,0 +1,400 @@
+{{extends "./layout/layout.html"}}
+{{import "./component/article/video.html"}}
+{{import "./component/article/novel.html"}}
+{{import "./component/article/image.html"}}
+
+{{block head()}}
+<!-- Article Open Graph -->
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="{{ Data.CreateTimeFormat }}" />
+<meta property="article:modified_time" content="{{ Data.CreateTimeFormat }}" />
+{{ if Data.Thumbnail != "" }}
+<meta property="og:image" content="{{ Data.Thumbnail }}" />
+<meta name="twitter:image" content="{{ Data.Thumbnail }}" />
+{{ else }}
+<meta property="og:image" content="{{ Config.Site.URL }}/upload/logo" />
+{{ end }}
+<meta property="og:url" content="{{ Config.Site.URL }}{{ Page.Path }}" />
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{ Data.Title }}" />
+{{ if Data.Description != "" }}
+<meta name="twitter:description" content="{{ Data.Description }}" />
+<meta property="og:description" content="{{ Data.Description }}" />
+{{ end }}
+
+<!-- Content Type Schema（视频=VideoObject / 图集=ImageGallery / 小说=Book / 普通文章=SoftwareApplication） -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": {{ if Data.ContentType == "video" }}"VideoObject"{{ else if Data.ContentType == "image" }}"ImageGallery"{{ else if Data.ContentType == "novel" }}"Book"{{ else }}["Article", "SoftwareApplication"]{{ end }},
+  "headline": "{{ Data.Title }}",
+  "name": "{{ Data.Title }}",
+  "description": "{{ Data.Description }}",
+  "datePublished": "{{ Data.CreateTimeFormat }}",
+  "dateModified": "{{ Data.CreateTimeFormat }}",
+  {{ if Data.Thumbnail }}"image": "{{ Data.Thumbnail }}",{{ end }}
+  "url": "{{ Config.Site.URL }}{{ Page.Path }}",
+  "author": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}",
+    "url": "{{ Config.Site.URL }}"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}",
+    "url": "{{ Config.Site.URL }}"{{ if Config.Template.Logo != "" }},
+    "logo": {
+      "@type": "ImageObject",
+      "url": "{{ Config.Site.URL }}/upload/logo"
+    }{{ end }}
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "{{ Config.Site.URL }}{{ Page.Path }}"
+  },
+  "articleSection": "{{ if Data.Category }}{{ Data.Category.Name }}{{ end }}",
+  "keywords": "{{ if len(Data.KeywordList) > 0 }}{{ range i, k := Data.KeywordList }}{{ if i > 0 }}, {{ end }}{{ k }}{{ end }}{{ end }}"
+}
+</script>
+
+<!-- BreadcrumbList Schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [{
+    "@type": "ListItem",
+    "position": 1,
+    "name": "首页",
+    "item": "{{ Config.Site.URL }}/"
+  }{{ if Data.Category }},{
+    "@type": "ListItem",
+    "position": 2,
+    "name": "{{ Data.Category.Name }}",
+    "item": "{{ Config.Site.URL }}{{ Data.Category.URL() }}"
+  }{{ end }},{
+    "@type": "ListItem",
+    "position": {{ if Data.Category }}3{{ else }}2{{ end }},
+    "name": "{{ Data.Title }}",
+    "item": "{{ Config.Site.URL }}{{ Page.Path }}"
+  }]
+}
+</script>
+{{end}}
+
+{{block main()}}
+{{ tags := Tag().Limit(10).ListByArticleID(Data.ID) }}
+{{ ancestors := Widget.Breadcrumb(Data.CategoryID) }}
+
+<div class="container mx-auto max-w-6xl">
+    <!-- Breadcrumb -->
+    <nav class="mb-6" aria-label="面包屑导航">
+        <ol class="flex items-center space-x-2 text-sm w-text-3 flex-wrap" itemscope itemtype="https://schema.org/BreadcrumbList">
+            <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                <a href="/" itemprop="item" class="hover:text-primary-600 transition-colors">
+                    <span itemprop="name">首页</span>
+                </a>
+                <meta itemprop="position" content="1" />
+            </li>
+            {{ range i, v := ancestors }}
+            <li><i class="fas fa-chevron-right text-xs" aria-hidden="true"></i></li>
+            <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                <a href="{{ v.URL() }}" itemprop="item" class="hover:text-primary-600 transition-colors">
+                    <span itemprop="name">{{ v.Name }}</span>
+                </a>
+                <meta itemprop="position" content="{{ i + 2 }}" />
+            </li>
+            {{ end }}
+        </ol>
+    </nav>
+
+    <div class="flex flex-col lg:flex-row gap-8">
+        <!-- Main Content -->
+        <article class="flex-1 min-w-0">
+            <!-- Article Header -->
+            <header class="w-surface rounded-2xl p-6 md:p-8 shadow-sm border w-border mb-6 relative">
+                {{ if Data.DownloadPaused }}
+                <div style="position:absolute; top:0.75rem; right:0.75rem; z-index:2;">
+                    <span style="display:inline-flex; align-items:center; font-size:0.75rem; font-weight:600; color:#ffffff; background:#ef4444; padding:0.25rem 0.7rem; border-radius:9999px; box-shadow:0 1px 4px rgba(0,0,0,.18);">
+                        <i class="fas fa-ban" style="margin-right:0.25rem;"></i>由于版权原因，已移除该资源
+                    </span>
+                </div>
+                {{ end }}
+                <h1 class="text-2xl md:text-3xl font-bold w-text mb-4 leading-tight">
+                    {{ if Data.ContentType == "video" }}<span class="type-badge type-badge-video align-middle mr-2">视频</span>
+                    {{ else if Data.ContentType == "novel" }}<span class="type-badge type-badge-novel align-middle mr-2">小说</span>
+                    {{ else if Data.ContentType == "image" }}<span class="type-badge type-badge-image align-middle mr-2">图集</span>
+                    {{ end }}
+                    <span style="{{ if Data.DownloadPaused }}text-decoration: line-through;{{ end }}">{{ Data.Title }}</span>
+                </h1>
+
+                <!-- 内容类型统计：视频集数 / 图集张数 / 小说章节数 -->
+                {{ if Data.ContentType == "video" && len(Data.VideoList) > 0 }}
+                <div class="flex items-center gap-2 text-sm w-text-3 mb-3">
+                    <i class="fas fa-list-ol text-primary-500" aria-hidden="true"></i>共 {{ len(Data.VideoList) }} 集
+                </div>
+                {{ else if Data.ContentType == "image" && len(Data.ImageList) > 0 }}
+                <div class="flex items-center gap-2 text-sm w-text-3 mb-3">
+                    <i class="fas fa-images text-primary-500" aria-hidden="true"></i>共 {{ len(Data.ImageList) }} 张图片
+                </div>
+                {{ else if Data.ContentType == "novel" && Data.ChapterTotal > 0 }}
+                <div class="flex items-center gap-2 text-sm w-text-3 mb-3">
+                    <i class="fas fa-book text-primary-500" aria-hidden="true"></i>共 {{ Data.ChapterTotal }} 章 · 正在读第 {{ Data.CurrentChapter }} 章
+                </div>
+                {{ end }}
+                
+                <!-- 发布时间和浏览量 -->
+                <div class="flex flex-wrap items-center gap-4 text-sm w-text-3 mb-4">
+                    <span class="flex items-center">
+                        <i class="fas fa-calendar-alt mr-2 text-primary-500"></i>
+                        {{ Data.CreateTimeFormat }}
+                    </span>
+                    <span class="flex items-center">
+                        <i class="fas fa-eye mr-2 text-primary-500"></i>
+                        {{ Data.Views }} 次浏览
+                    </span>
+                    {{ if Data.Category }}
+                    <a href="{{ Data.Category.URL() }}" class="flex items-center hover:text-primary-600 transition-colors">
+                        <i class="fas fa-folder mr-2 text-primary-500"></i>
+                        {{ Data.Category.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+
+                <!-- 标签 -->
+                {{ if len(tags) > 0 }}
+                <div class="flex flex-wrap gap-2">
+                    {{ range i, t := tags }}
+                    <a href="{{ t.URL() }}" class="inline-flex items-center px-3 py-1 w-tag text-sm rounded-full border  transition-colors">
+                        <i class="fas fa-hashtag mr-1 text-xs opacity-60"></i>{{ t.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+                {{ end }}
+            </header>
+
+            <!-- Article Content（按文章内容类型分支：视频/小说/图片走专属消费视图，其余走默认正文） -->
+            {{ if Data.ContentType == "video" }}
+            {{yield articleVideo()}}
+            {{else if Data.ContentType == "novel"}}
+            {{yield articleNovel()}}
+            {{else if Data.ContentType == "image"}}
+            {{yield articleImage()}}
+            {{else}}
+            <div class="w-surface rounded-2xl p-6 md:p-8 shadow-sm border w-border mb-6 relative overflow-hidden" style="{{ if Data.DownloadPaused }}min-height: 22rem; max-height: 60vh;{{ end }}">
+                {{ if Data.Content != "" }}
+                <div class="prose prose-lg max-w-none article-content transition-all duration-300" style="{{ if Data.DownloadPaused }}filter: blur(7px); -webkit-filter: blur(7px); opacity: 0.55; user-select: none; pointer-events: none;{{ end }}">
+                    {{ Data.Content | raw }}
+                </div>
+                {{ if Data.DownloadPaused }}
+                <!-- 正文版权遮罩：隐藏正文（保留占位，非移除） -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center p-6 pointer-events-none text-center">
+                    <img src="/notify.svg" alt="版权提示插画" class="w-36 md:w-44 mb-3 select-none pointer-events-none" loading="lazy" decoding="async" />
+                    <p class="font-bold text-red-700 mb-1">由于版权原因，正文内容暂不可阅读</p>
+                    <p class="text-sm text-red-600">请支持正版</p>
+                </div>
+                {{ end }}
+                {{ else }}
+                <div class="text-center py-12 w-text-3">
+                    <i class="fas fa-file-alt text-4xl mb-4 w-text-3"></i>
+                    <p>暂无内容</p>
+                </div>
+                {{ end }}
+            </div>
+            {{ end }}
+
+            <!-- Download Resources Section -->
+            {{ if len(Data.DownloadList) > 0 }}
+            <div id="download-section" class="w-surface rounded-2xl p-6 md:p-8 shadow-sm border w-border mb-6 relative overflow-hidden" style="{{ if Data.DownloadPaused }}min-height: 22rem;{{ end }}">
+                <div class="transition-all duration-300" style="{{ if Data.DownloadPaused }}filter: blur(7px); -webkit-filter: blur(7px); opacity: 0.55; user-select: none; pointer-events: none;{{ end }}">
+                <h2 class="text-xl font-bold w-text mb-6 flex items-center">
+                    <div class="w-10 h-10 w-sunken rounded-xl flex items-center justify-center mr-3">
+                        <i class="fas fa-cloud-download-alt w-text-2"></i>
+                    </div>
+                    下载资源
+                    <span class="ml-auto text-sm font-normal w-text-3 w-sunken px-3 py-1 rounded-full">
+                        共 {{ len(Data.DownloadList) }} 个网盘
+                    </span>
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {{ range i, download := Data.DownloadList }}
+                    <div class="group flex items-center justify-between p-4 w-sunken rounded-xl border w-border hover:border-primary-200 hover:bg-primary-50/50 transition-all">
+                        <div class="flex items-center min-w-0 flex-1">
+                            <div class="w-10 h-10 bg-gray-200 group-hover:bg-primary-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 transition-colors">
+                                <i class="fas fa-cloud w-text-3 group-hover:text-primary-500 transition-colors"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <h3 class="font-medium w-text truncate text-sm">{{ download.Type }}</h3>
+                                {{ if download.Password != "" }}
+                                <p class="text-xs w-text-3 mt-0.5">
+                                    <i class="fas fa-key mr-1 opacity-60"></i>{{ download.Password }}
+                                </p>
+                                {{ else }}
+                                <p class="text-xs w-text-3 mt-0.5">无密码</p>
+                                {{ end }}
+                            </div>
+                        </div>
+                        <a href="/download/{{ download.Slug }}?type={{ download.Type }}"
+                           target="_blank"
+                           class="ml-3 flex-shrink-0 inline-flex items-center px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors shadow-sm hover:shadow">
+                            <i class="fas fa-download mr-1.5"></i>下载
+                        </a>
+                    </div>
+                    {{ end }}
+                </div>
+                </div>
+                {{ if Data.DownloadPaused }}
+                <!-- 下载区版权遮罩：隐藏下载按钮（保留占位，非移除） -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center p-6 pointer-events-none text-center">
+                    <img src="/notify.svg" alt="版权提示插画" class="w-36 md:w-44 mb-3 select-none pointer-events-none" loading="lazy" decoding="async" />
+                    <p class="font-bold text-red-700 mb-1">由于版权原因，停止提供下载链接</p>
+                    <p class="text-sm text-red-600">请支持正版</p>
+                </div>
+                {{ end }}
+            </div>
+            {{ end }}
+        </article>
+
+        <!-- Sidebar（按内容类型差异化：视频=选集信息 / 小说=章节目录 / 图集=图集信息 / 普通=软件信息卡） -->
+        <aside class="w-full lg:w-80 flex-shrink-0">
+            {{ if Data.ContentType == "video" }}
+            {{yield videoSidebar()}}
+            {{else if Data.ContentType == "novel"}}
+            {{yield novelSidebar()}}
+            {{else if Data.ContentType == "image"}}
+            {{yield imageSidebar()}}
+            {{else}}
+            <!-- Software Info Card -->
+            <div class="w-surface rounded-2xl shadow-sm border w-border mb-6 sticky top-24 overflow-hidden">
+                {{ if Data.Thumbnail != "" }}
+                <div class="relative">
+                    <img src="{{ Data.Thumbnail }}" alt="{{ Data.Title }}" class="w-full h-40 object-cover" loading="lazy" decoding="async" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgdmlld0JveD0iMCAwIDgwIDgwIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iODAiIGZpbGw9IiNlNWU3ZWIiLz48cGF0aCBkPSJNMTAgMzBoNjBWMTBoLTYwVjMwaDZ6bTAgNDBoNjB2NTBoLTYwVjcwaDZ6bTMwIDM1YzE2LjYyNyAwIDMwLTEzLjM3MyAzMC0zMHMtMTMuMzczLTMwLTMwLTMwLTMwIDEzLjM3My0zMCAzMCAxMy4zNzMgMzAgMzAgMzB6IiBmaWxsPSIjOTRhNmJjIi8+PHJlY3QgeD0iMjAiIHk9IjQ1IiB3aWR0aD0iNDAiIGhlaWdodD0iMjAiIGZpbGw9IiNmZmYiLz48L3N2Zz4='">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" aria-hidden="true"></div>
+                </div>
+                {{ end }}
+                
+                <div class="p-5">
+                    <!-- 软件信息 -->
+                    {{ if len(Data.SidebarInfo) > 0 }}
+                    <div class="space-y-3 mb-5">
+                        {{ range i, info := Data.SidebarInfo }}
+                        <div class="flex items-center justify-between py-2 border-b w-border last:border-0">
+                            <div class="flex items-center w-text-3 text-sm">
+                                <i class="{{ info.Icon }} w-4 mr-2 text-primary-500"></i>
+                                <span>{{ info.Label }}</span>
+                            </div>
+                            <span class="text-sm font-medium w-text">{{ info.Value }}</span>
+                        </div>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+
+                    <!-- 下载按钮 -->
+                    {{ if Data.DownloadPaused }}
+                    <a {{ if Data.GenuineURL != "" }}href="{{ Data.GenuineURL }}" target="_blank"{{ else }}href="#"{{ end }}
+                       class="w-full inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white font-medium rounded-xl hover:from-red-600 hover:to-orange-600 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5">
+                        <i class="fas fa-crown mr-2"></i>
+                        请支持正版
+                    </a>
+                    {{ else if len(Data.DownloadList) > 0 }}
+                    <a href="#download-section"
+                       class="w-full inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-primary-500 to-blue-500 text-white font-medium rounded-xl hover:from-primary-600 hover:to-blue-600 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5">
+                        <i class="fas fa-download mr-2"></i>
+                        立即下载
+                    </a>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+
+            <!-- Related Articles -->
+            {{ relatedArticles := Article().Limit(5).Order("views desc").ListByCategoryID(Data.CategoryID) }}
+            {{ if len(relatedArticles) > 0 }}
+            <div class="w-surface rounded-2xl p-5 shadow-sm border w-border mb-6">
+                <h3 class="text-base font-bold w-text mb-4 flex items-center">
+                    <i class="fas fa-fire text-orange-500 mr-2"></i>
+                    相关推荐
+                </h3>
+                <div class="space-y-2">
+                    {{ range i, v := relatedArticles }}
+                    {{ if v.ID != Data.ID }}
+                    <a href="{{ v.URL() }}" class="block p-3 w-sunken rounded-lg hover:bg-primary-50 transition-colors">
+                        <h4 class="font-medium w-text text-sm truncate">{{ v.Title }}</h4>
+                        <div class="flex items-center justify-between mt-1 text-xs w-text-3">
+                            <span>{{ v.CreateTimeFormat("2006-01-02") }}</span>
+                            <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
+                        </div>
+                    </a>
+                    {{ end }}
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+
+            <!-- Tag Cloud -->
+            {{ tagCloud := Widget.TagCloud() }}
+            {{ if len(tagCloud) > 0 }}
+            <div class="bg-gradient-to-br from-primary-50/50 to-blue-50/50 rounded-2xl p-5 shadow-sm border/50">
+                <h3 class="text-base font-bold w-text mb-4 flex items-center">
+                    <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-blue-500 rounded-lg flex items-center justify-center mr-2">
+                        <i class="fas fa-tags text-white text-sm"></i>
+                    </div>
+                    标签云
+                </h3>
+                <div class="flex flex-wrap gap-2">
+                    {{ range i, t := tagCloud }}
+                    {{ tagSize := "text-sm" }}
+                    {{ if i < 3 }}
+                    {{ tagSize = "text-base font-medium" }}
+                    {{ else if i < 7 }}
+                    {{ tagSize = "text-sm" }}
+                    {{ else }}
+                    {{ tagSize = "text-xs" }}
+                    {{ end }}
+                    <a href="{{ t.URL() }}" class="inline-flex items-center px-3 py-1.5 w-surface w-text-2 {{ tagSize }} rounded-full border w-border hover:border-primary-300 hover:bg-gradient-to-r hover:from-primary-50 hover:to-blue-50 hover:text-primary-600 transition-all duration-200 shadow-sm hover:shadow">
+                        <i class="fas fa-hashtag mr-1 text-xs opacity-50"></i>{{ t.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+        </aside>
+    </div>
+</div>
+
+<script type="text/javascript">
+    // 图片加载失败时显示默认占位图
+    document.addEventListener('DOMContentLoaded', function() {
+        var defaultImg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgdmlld0JveD0iMCAwIDgwIDgwIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iODAiIGZpbGw9IiNlNWU3ZWIiLz48cGF0aCBkPSJNMTAgMzBoNjBWMTBoLTYwVjMwaDZ6bTAgNDBoNjB2NTBoLTYwVjcwaDZ6bTMwIDM1YzE2LjYyNyAwIDMwLTEzLjM3MyAzMC0zMHMtMTMuMzczLTMwLTMwLTMwLTMwIDEzLjM3My0zMCAzMCAxMy4zNzMgMzAgMzAgMzB6IiBmaWxsPSIjOTRhNmJjIi8+PHJlY3QgeD0iMjAiIHk9IjQ1IiB3aWR0aD0iNDAiIGhlaWdodD0iMjAiIGZpbGw9IiNmZmYiLz48L3N2Zz4=';
+        var images = document.querySelectorAll('.article-content img, .w-surface img');
+        for (var i = 0; i < images.length; i++) {
+            (function(img) {
+                img.onerror = function() {
+                    this.src = defaultImg;
+                    this.onerror = null;
+                };
+            })(images[i]);
+        }
+    });
+
+    let bots = ["google","bing","baidu","yahoo","bot","spider"]
+    for (let k in bots) {
+        if(navigator.userAgent.toLowerCase().indexOf(bots[k]) === -1) a()
+    }
+    function a(){
+        let id = window.location.pathname
+        let local = localStorage.getItem("mark")
+        let mark = local ? local.split(',') : []
+        if(!mark.includes(id)){
+            let xhr = new XMLHttpRequest();
+            xhr.open('PUT', window.location.href, false);
+            xhr.setRequestHeader("X-Requested-With","XMLHttpRequest");
+            xhr.send();
+            mark.push(id);
+            localStorage.setItem("mark", mark.toString());
+        }
+    }
+</script>
+{{end}}

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="{{ Config.Site.Name }}">
+    <meta name="copyright" content="{{ Config.Site.Name }}">
+    <meta name="format-detection" content="telephone=no">
+    {{ if Config.Template.FaviconIco != "" }}
+    <link rel="icon" href="{{ Config.Template.FaviconIco }}" type="image/x-icon">
+    <link rel="shortcut icon" href="{{ Config.Template.FaviconIco }}" type="image/x-icon">
+    {{ end }}
+    {{ if Page.Title != "" }}
+    <title>{{ Page.Title }}</title>
+    {{ end }}
+    {{ if Page.Description != "" }}
+    <meta name="description" content="{{ Page.Description }}">
+    {{ end }}
+    {{ if Page.Keywords != "" }}
+    <meta name="keywords" content="{{ Page.Keywords }}">
+    {{ end }}
+    <link rel="canonical" href="{{ Config.Site.URL }}{{ Page.Path }}" />
+    <link rel="sitemap" type="application/xml" href="/sitemap/article.xml">
+
+    <!-- 资源预连接 -->
+    {{ if Config.Site.URL != "" }}
+    <link rel="preconnect" href="{{ Config.Site.URL }}">
+    <link rel="dns-prefetch" href="{{ Config.Site.URL }}">
+    {{ end }}
+    <!-- 子模板 SEO head -->
+    {{ if Page.Name == "article" }}
+    {{ block head() }}{{ end }}
+    {{ end }}
+    <meta property="og:site_name" content="{{ Config.Site.Name }}" />
+    <meta property="og:type" content="{{ if Page.Name == `article` }}article{{ else }}website{{ end }}" />
+    <meta property="og:title" content="{{ Page.Title }}" />
+    {{ if Page.Description != "" }}
+    <meta property="og:description" content="{{ Page.Description }}" />
+    {{ end }}
+    <meta property="og:url" content="{{ Config.Site.URL }}{{ Page.Path }}" />
+    <meta property="og:locale" content="zh_CN" />
+    {{ if Page.Name == `index` }}
+    <meta property="og:image" content="{{ Config.Site.URL }}/upload/logo" />
+    <meta name="twitter:card" content="summary" />
+    {{ end }}
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "name": "{{ Config.Site.Name }}",
+          "url": "{{ Config.Site.URL }}",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "{{ Config.Site.URL }}/search?keyword={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "Organization",
+          "name": "{{ Config.Site.Name }}",
+          "url": "{{ Config.Site.URL }}",
+          "logo": "{{ if Config.Template.Logo != "" }}{{ Config.Site.URL }}/upload/logo{{ end }}"
+        }
+      ]
+    }
+    </script>
+    <link rel="stylesheet" href="/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>[x-cloak] { display: none !important; }</style>
+    <link href="/style.css" rel="stylesheet">
+    {{ Config.Template.Head | raw }}
+</head>
+<body x-data="{ showMobileMenu: false }">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary-500 focus:text-white focus:rounded-lg">跳转到主要内容</a>
+    <header>
+        <nav class="glass-nav fixed top-0 left-0 right-0 z-50 shadow-sm" role="navigation" aria-label="主导航">
+        <div class="min-h-16 flex items-center justify-between px-4 md:px-8">
+            <div class="flex items-center space-x-2 flex-shrink-0">
+                <a href="/" class="flex items-center space-x-2" aria-label="返回首页">
+                    {{ logo := Widget.LogoURL() }}
+                    {{ if logo != "" }}
+                    <img src="{{ logo }}" alt="{{ Config.Site.Name }}" class="w-8 h-8 rounded-lg object-cover" width="32" height="32">
+                    {{ else }}
+                    <div class="w-8 h-8 w-gradient-hero rounded-lg flex items-center justify-center" aria-hidden="true">
+                        <i class="fas fa-play text-white text-sm"></i>
+                    </div>
+                    {{ end }}
+                    <span class="font-bold text-xl w-text whitespace-nowrap">{{ Config.Site.Name }}</span>
+                </a>
+            </div>
+        
+        <!-- 导航菜单：flex-shrink-0 防止压缩 -->
+        <div class="hidden md:flex items-center flex-nowrap overflow-visible flex-shrink-0" x-data="{ 
+            showMore: false,
+            checkOverflow() {
+                const nav = this.$refs.navContainer;
+                const more = this.$refs.moreMenu;
+                if (nav && more) {
+                    const navWidth = nav.offsetWidth;
+                    const scrollWidth = nav.scrollWidth;
+                    more.style.display = (scrollWidth > navWidth) ? 'block' : 'none';
+                }
+            }
+        }" x-init="checkOverflow()" @resize.window="checkOverflow()">
+            <div class="flex flex-nowrap overflow-visible" x-ref="navContainer">
+                {{ range i, v := Widget.Menu() }}
+                <div class="relative" x-data="{ showSub: false, hideTimer: null }" @mouseenter="clearTimeout(hideTimer); showSub = true" @mouseleave="hideTimer = setTimeout(() => showSub = false, 200)">
+                    <a href="{{ v.URL() }}" class="whitespace-nowrap px-3 py-2 hover:text-primary-600 transition-colors font-medium relative group">
+                        {{ v.Name }}
+                        <div class="absolute bottom-0 left-0 w-0 h-0.5 bg-primary-500 transition-all duration-300 group-hover:w-full"></div>
+                    </a>
+                    {{ if len(v.Children) > 0 }}
+                    <div x-show="showSub"
+                         x-cloak
+                         @mouseenter="clearTimeout(hideTimer)"
+                         @mouseleave="hideTimer = setTimeout(() => showSub = false, 200)"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         class="nav-submenu absolute left-0 top-full mt-2 w-surface rounded-xl shadow-lg border w-border py-2 z-[60]">
+                        {{ range i, child := v.Children }}
+                        <a href="{{ child.URL() }}" class="nav-submenu-item block px-4 py-2 text-sm w-text-2 hover:text-primary-600 whitespace-nowrap">
+                            <i class="fas {{ if child.ContentType == "video" }}fa-film nav-ico-video{{ else if child.ContentType == "novel" }}fa-book nav-ico-novel{{ else if child.ContentType == "image" }}fa-images nav-ico-image{{ else }}fa-folder{{ end }} mr-2 text-xs" aria-hidden="true"></i>{{ child.Name }}
+                        </a>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+                </div>
+                {{ end }}
+            </div>
+            <!-- 更多按钮 -->
+            <div class="relative" x-ref="moreMenu" x-show="false" x-cloak>
+                <button @click="showMore = !showMore" class="whitespace-nowrap px-3 py-2 hover:text-primary-600 transition-colors font-medium">
+                    <i class="fas fa-ellipsis-h"></i>
+                </button>
+                <div x-show="showMore" 
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 -translate-y-2"
+                     x-transition:enter-end="opacity-100 translate-y-0"
+                     @click.away="showMore = false"
+                     class="absolute right-0 top-full mt-1 w-surface rounded-lg shadow-lg border w-border py-2 min-w-[150px] z-50">
+                    <div class="px-4 py-2 text-sm w-text-3 border-b w-border">更多分类</div>
+                    {{ range i, v := Widget.Menu() }}
+                    <a href="{{ v.URL() }}" class="block px-4 py-2 text-sm w-text-2 hover:bg-primary-50 hover:text-primary-600 whitespace-nowrap">
+                        {{ v.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
+
+        <!-- 搜索框：flex-shrink-0 保持宽度 -->
+        <div class="flex items-center space-x-2 flex-shrink-0">
+            <!-- 搜索框 -->
+            <div class="relative hidden sm:block flex-shrink-0">
+                <form action="/search" method="get" role="search">
+                    <label for="search-input" class="sr-only">搜索</label>
+                    <input type="search" id="search-input" name="keyword" placeholder="输入关键字搜索" 
+                           class="search-input w-36 md:w-48 lg:w-56 px-4 py-2 w-surface border w-border rounded-full focus:border-primary-500 focus:ring-2 focus:ring-primary-200 text-sm"
+                           aria-label="搜索文章">
+                    <button type="submit" aria-label="提交搜索" class="absolute right-1 top-1 w-8 h-8 w-gradient-hero text-white rounded-full hover:from-primary-600 hover:to-secondary-600 transition-all flex items-center justify-center">
+                        <i class="fas fa-search text-xs" aria-hidden="true"></i>
+                    </button>
+                </form>
+            </div>
+            <!-- 移动端菜单按钮：只在移动端显示 -->
+            <button @click="showMobileMenu = !showMobileMenu" class="md:hidden p-2 w-text-2 hover:text-primary-600" aria-label="打开菜单" :aria-expanded="showMobileMenu" aria-controls="mobile-menu">
+                <i class="fas fa-bars text-xl" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        {* 子菜单平铺条：仅首页显示（暂时），每个大类别一行、随页滚动 *}
+        </nav>
+        {{ if Page.Name == "index" }}
+        <div class="subnav" aria-label="子分类快捷导航">
+            <div class="subnav-inner">
+                {{ range i, v := Widget.Menu() }}
+                {{ if len(v.Children) > 0 }}
+                <div class="subnav-group">
+                    <a href="{{ v.URL() }}" class="subnav-group-name">
+                        <i class="fas {{ if v.ContentType == "video" }}fa-film nav-ico-video{{ else if v.ContentType == "novel" }}fa-book nav-ico-novel{{ else if v.ContentType == "image" }}fa-images nav-ico-image{{ else }}fa-folder nav-ico-folder{{ end }}" aria-hidden="true"></i>{{ v.Name }}
+                    </a>
+                    {{ range j, child := v.Children }}
+                    <a href="{{ child.URL() }}" class="subnav-link">{{ child.Name }}</a>
+                    {{ end }}
+                </div>
+                {{ end }}
+                {{ end }}
+            </div>
+        </div>
+        {{ end }}
+    </header>
+
+    <div id="mobile-menu"
+         x-show="showMobileMenu" 
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 -translate-y-4"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 -translate-y-4"
+         class="fixed top-16 left-0 right-0 z-40 w-surface shadow-lg md:hidden"
+         role="navigation"
+         aria-label="移动端导航菜单">
+        <div class="p-4 space-y-2">
+            <form action="/search" method="get" class="mb-4 sm:hidden" role="search">
+                <label for="mobile-search-input" class="sr-only">搜索</label>
+                <input type="search" id="mobile-search-input" name="keyword" placeholder="输入关键字搜索" 
+                       class="w-full px-4 py-2 w-surface border w-border rounded-full focus:border-primary-500 focus:ring-2 focus:ring-primary-200 text-sm"
+                       aria-label="搜索文章">
+            </form>
+            {{ range i, v := Widget.Menu() }}
+            <div>
+                <a href="{{ v.URL() }}" class="block py-2 px-4 w-text-2 hover:bg-primary-50 hover:text-primary-600 rounded-lg transition-colors font-medium">
+                    <i class="fas {{ if v.ContentType == "video" }}fa-film nav-ico-video{{ else if v.ContentType == "novel" }}fa-book nav-ico-novel{{ else if v.ContentType == "image" }}fa-images nav-ico-image{{ else }}fa-folder{{ end }} mr-2 text-xs" aria-hidden="true"></i>{{ v.Name }}
+                </a>
+                {{ if len(v.Children) > 0 }}
+                <div class="ml-4 mt-1 space-y-0.5 border-l w-border pl-2">
+                    {{ range i, child := v.Children }}
+                    <a href="{{ child.URL() }}" class="block py-1.5 px-4 text-sm w-text-2 hover:text-primary-600 rounded-lg">
+                        {{ child.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+                {{ end }}
+            </div>
+            {{ end }}
+        </div>
+    </div>
+
+    {{ if Page.Name == `index` }}
+    <section class="hero-bg w-hero-pt h-96 flex items-center relative overflow-hidden">
+        <div class="absolute inset-0 opacity-10">
+            <div class="absolute top-20 left-10 w-96 h-96 bg-gradient-to-r from-primary-300 to-secondary-300 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
+            <div class="absolute top-40 right-20 w-96 h-96 bg-gradient-to-r from-secondary-300 to-primary-300 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000"></div>
+            <div class="absolute bottom-20 left-1/3 w-96 h-96 bg-gradient-to-r from-primary-300 to-secondary-300 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000"></div>
+        </div>
+        <div class="container mx-auto px-4 md:px-8 relative z-10">
+            <div class="max-w-2xl">
+                <h1 class="text-3xl md:text-4xl font-bold w-text mb-2 leading-tight">看视频 · 读小说 · 赏图集</h1>
+                <p class="text-base md:text-lg w-text-2 leading-relaxed">沉浸式多媒体内容站，追剧不停、追更不断、美图不漏</p>
+            </div>
+        </div>
+    </section>
+    {{ end }}
+
+    <main id="main-content" class="{{ if Page.Name == `index` }}container mx-auto px-4 md:px-8 py-12 -mt-32 relative z-20{{ else }}w-main-pt pb-12 px-4 md:px-8{{ end }}" role="main">
+        {{yield main()}}
+    </main>
+
+    <footer class="bg-gradient-to-r from-gray-900 to-gray-800 text-white py-8 mt-16" role="contentinfo">
+        <div class="container mx-auto px-4 md:px-8">
+
+            {{ cats := Category().List() }}
+
+            <div class="flex flex-wrap justify-center items-center gap-4 mb-6">
+                {{ range i, c := cats }}
+                {{ if c.ParentID == 0 }}
+                <a href="{{ c.URL() }}" class="text-sm w-text-3 hover:text-white transition-colors">{{ c.Name }}</a>
+                {{ end }}
+                {{ end }}
+                <a href="{{ Config.Router.GetSitemapPath() }}/article.xml" class="text-sm w-text-3 hover:text-white transition-colors">Sitemap</a>
+                {{ if Config.AISEO.RSSEnable }}
+                <a href="/rss.xml" class="text-sm w-text-3 hover:text-white transition-colors" title="RSS 订阅">
+                    <i class="fas fa-rss mr-1"></i>RSS
+                </a>
+                <a href="/atom.xml" class="text-sm w-text-3 hover:text-white transition-colors" title="Atom 订阅">
+                    <i class="fas fa-rss mr-1"></i>Atom
+                </a>
+                {{ end }}
+                <a href="/download.html" class="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-primary-500/20 to-blue-500/20 text-primary-400 border border-primary-500/30 hover:border-primary-400 hover:text-primary-300 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary-500/20">
+                    <i class="fas fa-download mr-1.5 text-xs"></i>下载说明
+                </a>
+                <a href="/copyright.html" class="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-primary-500/20 to-blue-500/20 text-primary-400 border border-primary-500/30 hover:border-primary-400 hover:text-primary-300 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary-500/20">
+                    <i class="fas fa-shield-alt mr-1.5 text-xs"></i>版权说明
+                </a>
+            </div>
+
+            <div class="border-t border-gray-700 pt-6 pb-6">
+                <div class="flex flex-col md:flex-row justify-center items-center gap-2">
+                    <div class="text-sm w-text-3  align-center md:text-center">
+                        资源收集于网络，版权归原作者所有. 请在下载后24小时之内删除，若作商业用途，请到原网站购买. 如果有侵权，请来信告知 service@wolves.local，我们将及时撤销。
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-700 pt-6">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-2">
+                    <div class="text-sm w-text-3 text-center md:text-left">
+                        {{ Config.Template.Footer | raw }}
+                    </div>
+                    <div class="text-sm w-text-3">
+                        Powered by <a href="/" class="hover:text-white">wolves</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    {* 导航高度动态同步：仅主行（fixed）计入 --nav-h；subnav 为文档流内元素随页滚动，不占固定层 *}
+    <script>
+    (function() {
+        function syncNavSpace() {
+            var nav = document.querySelector('.glass-nav');
+            if (!nav) return;
+            document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
+        }
+        syncNavSpace();
+        window.addEventListener('resize', syncNavSpace);
+    })();
+    </script>
+
+    <!-- 图片加载失败处理：自动替换为默认图标 -->
+    <script>
+    (function() {
+        var defaultImageSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300aaff'/%3E%3Cstop offset='100%25' stop-color='%2322c55e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23g)' width='100' height='100' rx='12'/%3E%3Cpath d='M30 65 L45 45 L55 55 L70 35' stroke='white' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='35' cy='35' r='8' fill='white' opacity='0.8'/%3E%3C/svg%3E";
+        document.addEventListener('error', function(e) {
+            var target = e.target;
+            if (target.tagName !== 'IMG') return;
+            if (target.src === defaultImageSvg || target.dataset.errorHandled) return;
+            target.dataset.errorHandled = 'true';
+            target.src = defaultImageSvg;
+            if (!target.classList.contains('object-cover')) {
+                target.classList.add('object-cover');
+            }
+        }, true);
+    })();
+    </script>
+</body>
+</html>

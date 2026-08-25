@@ -1,0 +1,91 @@
+{{extends "./layout/layout.html"}}
+{{import "./component/pagination.html"}}
+
+{{block main()}}
+
+<div class="container mx-auto max-w-6xl">
+    <!-- Breadcrumb -->
+    <nav class="mb-6" aria-label="面包屑导航">
+        <ol class="flex items-center space-x-2 text-sm w-text-3">
+            <li><a href="/" class="hover:text-primary-600 transition-colors">首页</a></li>
+            <li><i class="fas fa-chevron-right text-xs" aria-hidden="true"></i></li>
+            <li><span class="w-text" aria-current="page">搜索结果</span></li>
+        </ol>
+    </nav>
+
+    <!-- Search Header -->
+    <div class="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-2xl p-6 md:p-8 mb-8">
+        <div class="flex items-center">
+            <div class="w-16 h-16 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-xl flex items-center justify-center mr-4" aria-hidden="true">
+                <i class="fas fa-search text-white text-2xl"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold w-text">
+                    搜索：{{ Data.Keyword }}
+                </h1>
+                <p class="text-sm w-text-3 mt-1">共 {{ Data.Count }} 个结果</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Results -->
+    {{ if len(Data.List) > 0 }}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8" role="list" aria-label="搜索结果列表">
+        {{ range i, v := Data.List }}
+        {{ tags := Tag().Limit(2).ListByArticleID(v.ID) }}
+        <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border card-hover hover:shadow-lg block" role="listitem">
+            {{ if v.Thumbnail != "" }}
+            <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-full h-40 object-cover rounded-lg mb-3" loading="lazy" decoding="async">
+            {{ else }}
+            <div class="w-full h-40 w-sunken rounded-lg mb-3 flex items-center justify-center" aria-hidden="true">
+                <i class="fas fa-cube text-4xl text-primary-300"></i>
+            </div>
+            {{ end }}
+            <h3 class="font-semibold w-text text-base mb-2 line-clamp-2">
+                {{ if v.ContentType == "video" }}<span class="type-badge type-badge-video">视频</span>{{ else if v.ContentType == "novel" }}<span class="type-badge type-badge-novel">小说</span>{{ else if v.ContentType == "image" }}<span class="type-badge type-badge-image">图片</span>{{ end }}
+                {{ v.Title }}
+            </h3>
+            {{ if v.Description != "" }}
+            <p class="text-sm w-text-3 line-clamp-2 mb-2">{{ v.Description }}</p>
+            {{ end }}
+            {{ if len(tags) > 0 }}
+            <div class="flex flex-wrap gap-2 mb-2">
+                {{ range i, t := tags }}
+                <span class="px-2 py-1 w-tag text-xs rounded-full">{{ t.Name }}</span>
+                {{ end }}
+            </div>
+            {{ end }}
+            <div class="flex items-center justify-between text-xs w-text-3">
+                <span>{{ v.CreateTimeFormat() }}</span>
+                <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
+            </div>
+        </a>
+        {{ end }}
+    </div>
+
+    <!-- Pagination -->
+    {{yield pagination(pageTotal=Data.PageTotal, existNextPage=Data.ExistNextPage, disableCount=Data.DisableCount, count=Data.Count)}}
+    {{ else }}
+    <!-- Empty State -->
+    <div class="w-sunken rounded-2xl p-12 text-center">
+        <div class="w-20 h-20 w-sunken rounded-full flex items-center justify-center mx-auto mb-6">
+            <i class="fas fa-search text-primary-500 text-2xl"></i>
+        </div>
+        <h3 class="text-xl font-semibold w-text mb-2">没有找到相关内容</h3>
+        <p class="w-text-3 text-sm mb-6">请尝试更换关键词，例如：软件名、版本号或分类词</p>
+        <a href="/" class="px-6 py-3 w-gradient-hero text-white rounded-full font-medium hover:from-primary-600 hover:to-secondary-600 transition-all inline-flex items-center justify-center">
+            <i class="fas fa-home mr-2"></i>
+            返回首页
+        </a>
+    </div>
+    {{ end }}
+</div>
+
+<script>
+    // Sync search input value
+    (function () {
+        var input = document.querySelector('.search-input');
+        if (input) input.value = "{{ Data.Keyword }}";
+    })();
+</script>
+{{end}}

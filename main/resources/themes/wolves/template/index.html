@@ -1,0 +1,245 @@
+{{extends "./layout/layout.html"}}
+{{import "./component/category/video.html"}}
+{{import "./component/category/novel.html"}}
+{{import "./component/category/image.html"}}
+
+{{block main()}}
+{* 内容聚合预览区：首页顶部直接浏览三类最新内容（Tab 免跳转切换），复用分类页布局组件 *}
+{{ videoCat := Category().GetBySlug("video") }}
+{{ novelCat := Category().GetBySlug("novel") }}
+{{ imageCat := Category().GetBySlug("image") }}
+{{ if videoCat || novelCat || imageCat }}
+<section class="home-showcase mb-12" x-data="{tab: '{{ if videoCat }}video{{ else if novelCat }}novel{{ else }}image{{ end }}'}">
+    <div class="home-tabs" role="tablist" aria-label="内容分类浏览">
+        {{ if videoCat }}
+        <button type="button" class="home-tab home-tab-video" role="tab"
+                :class="tab==='video' ? 'active' : ''" :aria-selected="tab==='video'" @click="tab='video'">
+            <i class="fas fa-film" aria-hidden="true"></i>视频
+        </button>
+        {{ end }}
+        {{ if novelCat }}
+        <button type="button" class="home-tab home-tab-novel" role="tab"
+                :class="tab==='novel' ? 'active' : ''" :aria-selected="tab==='novel'" @click="tab='novel'">
+            <i class="fas fa-book" aria-hidden="true"></i>小说
+        </button>
+        {{ end }}
+        {{ if imageCat }}
+        <button type="button" class="home-tab home-tab-image" role="tab"
+                :class="tab==='image' ? 'active' : ''" :aria-selected="tab==='image'" @click="tab='image'">
+            <i class="fas fa-images" aria-hidden="true"></i>图片
+        </button>
+        {{ end }}
+    </div>
+
+    {{ if videoCat }}
+    {{ videoList := Widget.CategoryPageList(videoCat.ID, 1).List }}
+    <div x-show="tab==='video'" x-cloak role="tabpanel">
+        {{ if len(videoList) > 0 }}
+        {{yield categoryVideo(list=videoList)}}
+        <div class="home-panel-more">
+            <a href="{{ videoCat.URL() }}">查看全部视频 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></a>
+        </div>
+        {{ else }}
+        <div class="home-empty">视频内容筹备中，敬请期待</div>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    {{ if novelCat }}
+    {{ novelList := Widget.CategoryPageList(novelCat.ID, 1).List }}
+    <div x-show="tab==='novel'" x-cloak role="tabpanel">
+        {{ if len(novelList) > 0 }}
+        {{yield categoryNovel(list=novelList)}}
+        <div class="home-panel-more">
+            <a href="{{ novelCat.URL() }}">查看全部小说 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></a>
+        </div>
+        {{ else }}
+        <div class="home-empty">小说内容筹备中，敬请期待</div>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    {{ if imageCat }}
+    {{ imageList := Widget.CategoryPageList(imageCat.ID, 1).List }}
+    <div x-show="tab==='image'" x-cloak role="tabpanel">
+        {{ if len(imageList) > 0 }}
+        {{yield categoryImage(list=imageList)}}
+        <div class="home-panel-more">
+            <a href="{{ imageCat.URL() }}">查看全部图片 <i class="fas fa-chevron-right ml-1 text-xs" aria-hidden="true"></i></a>
+        </div>
+        {{ else }}
+        <div class="home-empty">图片内容筹备中，敬请期待</div>
+        {{ end }}
+    </div>
+    {{ end }}
+</section>
+{{ end }}
+
+<!-- Recommendation Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+    <!-- Guess You Like -->
+    <div class="w-surface rounded-2xl p-6 border w-border">
+        <h2 class="text-xl font-semibold w-text mb-4 flex items-center">
+            <i class="fas fa-heart text-red-500 mr-2"></i>
+            猜你喜欢
+        </h2>
+        <div class="space-y-3">
+            {{ guessList := Article().Limit(8).PseudorandomList() }}
+            {{ range i, v := guessList }}
+            {{ if i < 8 }}
+            <a href="{{ v.URL() }}" class="w-surface rounded-xl p-3 border w-border hover:shadow-md transition-shadow cursor-pointer flex items-center block">
+                <div class="w-10 h-10 w-gradient-hero rounded-lg flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
+                    {{ if v.Thumbnail != "" }}
+                    <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-10 h-10 object-cover" loading="lazy" decoding="async" width="40" height="40">
+                    {{ else }}
+                    <i class="fas fa-cube text-white text-xs" aria-hidden="true"></i>
+                    {{ end }}
+                </div>
+                <h3 class="font-medium w-text truncate flex-1">{{ v.Title }}</h3>
+            </a>
+            {{ end }}
+            {{ end }}
+        </div>
+    </div>
+
+    <!-- Recent Updates -->
+    <div class="w-surface rounded-2xl p-6 border w-border">
+        <h2 class="text-xl font-semibold w-text mb-4 flex items-center">
+            <i class="fas fa-sync-alt text-blue-500 mr-2"></i>
+            最近更新
+        </h2>
+        <div class="space-y-4">
+            {{ range i, v := Article().Limit(6).Order("create_time desc").List() }}
+            <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border hover:shadow-md transition-shadow cursor-pointer block">
+                <h3 class="font-medium w-text truncate">{{ v.Title }}</h3>
+                <p class="text-sm w-text-3 mt-1">更新时间: {{ v.CreateTimeFormat() }}</p>
+            </a>
+            {{ end }}
+        </div>
+    </div>
+
+    <!-- Hot Recommendations -->
+    <div class="w-surface rounded-2xl p-6 border w-border">
+        <h2 class="text-xl font-semibold w-text mb-4 flex items-center">
+            <i class="fas fa-fire text-orange-500 mr-2"></i>
+            热门推荐
+        </h2>
+        <div class="space-y-4">
+            {{ range i, v := Article().Limit(6).Order("views desc").List() }}
+            <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border hover:shadow-md transition-shadow cursor-pointer block">
+                <h3 class="font-medium w-text truncate">{{ v.Title }}</h3>
+                <p class="text-sm w-text-3 mt-1">浏览次数: {{ v.Views }}次</p>
+            </a>
+            {{ end }}
+        </div>
+    </div>
+</div>
+
+<!-- Software Download Section -->
+{{ res := Widget.IndexList() }}
+<section class="mb-12">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold w-text">软件下载</h2>
+    </div>
+
+    <!-- Category Tags -->
+    <div class="flex flex-wrap gap-3 mb-6">
+        {{ range i, v := Category().List() }}
+        <a href="{{ v.URL() }}" class="category-tag px-4 py-2 w-surface border w-border rounded-full w-text-2 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
+            {{ v.Name }}
+        </a>
+        {{ end }}
+    </div>
+
+    <!-- Software Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {{ range i, v := res }}
+        {{ tags := Tag().Limit(2).ListByArticleID(v.ID) }}
+        <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border card-hover hover:shadow-lg relative group block overflow-hidden">
+            <div class="flex items-start">
+                <div class="w-12 h-12 w-gradient-hero rounded-lg flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
+                    {{ if v.Thumbnail != "" }}
+                    <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-12 h-12 object-cover" loading="lazy" decoding="async" width="48" height="48">
+                    {{ else }}
+                    <i class="fas fa-cube text-white text-sm" aria-hidden="true"></i>
+                    {{ end }}
+                </div>
+                <div class="flex-1 min-w-0 overflow-hidden">
+                    <h3 class="font-semibold w-text text-base mb-1 truncate block">{{ v.Title }}</h3>
+                    {{ if len(tags) > 0 }}
+                    <div class="flex flex-wrap gap-1 mb-1">
+                        {{ range i, t := tags }}
+                        <span class="px-2 py-0.5 w-tag text-xs rounded-full whitespace-nowrap">{{ t.Name }}</span>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+                    <span class="text-xs w-text-3">{{ v.CreateTimeFormat() }}</span>
+                </div>
+                <button class="opacity-0 group-hover:opacity-100 absolute top-2 right-2 bg-primary-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs transition-opacity hover:bg-primary-600 flex-shrink-0">
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>
+        </a>
+        {{ end }}
+    </div>
+</section>
+
+<!-- Article Zone Section -->
+<section class="mb-12">
+    <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold w-text">文章专区</h2>
+        <a href="/category/tutorial" class="text-sm w-link hover:text-primary-600 flex items-center">
+            查看更多 <i class="fas fa-chevron-right ml-1 text-xs"></i>
+        </a>
+    </div>
+
+    <!-- Article List -->
+    {{ tutorialCat := Category().GetBySlug("tutorial") }}
+    {{ globalList := Widget.GlobalList() }}
+    {{ if tutorialCat }}
+        {{ globalList = Article().Limit(9).ListByCategoryID(tutorialCat.ID) }}
+    {{ end }}
+    {{ if len(globalList) > 0 }}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {{ range i, v := globalList }}
+        <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border card-hover hover:shadow-lg block overflow-hidden">
+            {{ if v.Thumbnail != "" }}
+            <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-full h-40 object-cover rounded-lg mb-3" loading="lazy" decoding="async">
+            {{ end }}
+            <h3 class="font-semibold w-text text-base mb-2 truncate">{{ v.Title }}</h3>
+            <p class="text-sm w-text-3 line-clamp-2 mb-3">{{ v.Description }}</p>
+            <div class="flex items-center justify-between text-xs w-text-3">
+                <span>{{ v.CreateTimeFormat() }}</span>
+                <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
+            </div>
+        </a>
+        {{ end }}
+    </div>
+    {{ else }}
+    <div class="w-sunken rounded-2xl p-12 text-center">
+        <div class="w-20 h-20 w-sunken rounded-full flex items-center justify-center mx-auto mb-6">
+            <i class="fas fa-newspaper text-primary-500 text-2xl"></i>
+        </div>
+        <h3 class="text-xl font-semibold w-text mb-2">暂无文章内容</h3>
+        <p class="w-text-3 text-sm">我们会持续发布更多优质教程，敬请期待！</p>
+    </div>
+    {{ end }}
+</section>
+
+<!-- Friend Links -->
+{{ links := Widget.Link() }}
+{{ if len(links) > 0 }}
+<section class="mb-12">
+    <h2 class="text-xl font-semibold w-text mb-4">友情链接</h2>
+    <div class="w-sunken rounded-xl p-6">
+        <div class="flex flex-wrap gap-4">
+            {{ range i, v := links }}
+            <a href="{{ v.URL }}" target="_blank" rel="noopener" class="px-4 py-2 w-surface rounded-lg w-text-2 hover:text-primary-600 hover:shadow-md transition-all text-sm">
+                {{ v.Name }}
+            </a>
+            {{ end }}
+        </div>
+    </div>
+</section>
+{{ end }}
+{{end}}

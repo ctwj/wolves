@@ -1,0 +1,128 @@
+{{extends "./layout/layout.html"}}
+{{import "./component/pagination.html"}}
+{{import "./component/category/video.html"}}
+{{import "./component/category/novel.html"}}
+{{import "./component/category/image.html"}}
+
+{* 子分类筛选 tab 条：items=分类列表 activeID=当前分类ID allURL="全部"入口(空=不显示) tabType=类型色(video/novel/image/空) *}
+{{block catTabBar(items, activeID, allURL, tabType)}}
+<div class="cat-tabs-wrap mb-8">
+    <nav class="cat-tabs cat-tabs-{{ tabType }}" aria-label="子分类筛选">
+        {{ if allURL != "" }}
+        <a href="{{ allURL }}" class="cat-tab cat-tab-all">全部</a>
+        {{ end }}
+        {{ range i, v := items }}
+        <a href="{{ v.URL() }}" class="cat-tab{{ if v.ID == activeID }} active{{ end }}"{{ if v.ID == activeID }} aria-current="page"{{ end }}>{{ v.Name }}</a>
+        {{ end }}
+    </nav>
+</div>
+{{end}}
+
+{{block main()}}
+{{ res := Widget.CategoryPageList(Data.ID, Page.PageNumber) }}
+{{ children := Category().Children(Data.ID) }}
+{{ ancestors := Widget.Breadcrumb(Data.ID) }}
+
+<div class="container mx-auto max-w-6xl">
+    <!-- BreadcrumbList Schema -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [{
+        "@type": "ListItem",
+        "position": 1,
+        "name": "首页",
+        "item": "{{ Config.Site.URL }}/"
+      }{{ range i, v := ancestors }},{
+        "@type": "ListItem",
+        "position": {{ i + 2 }},
+        "name": "{{ v.Name }}",
+        "item": "{{ Config.Site.URL }}{{ v.URL() }}"
+      }{{ end }}]
+    }
+    </script>
+    
+    <!-- Breadcrumb Navigation -->
+    <nav class="mb-6" aria-label="面包屑导航">
+        <ol class="flex items-center space-x-2 text-sm w-text-3 flex-wrap">
+            <li><a href="/" class="hover:text-primary-600 transition-colors">首页</a></li>
+            {{ range i, v := ancestors }}
+            <li><i class="fas fa-chevron-right text-xs" aria-hidden="true"></i></li>
+            <li>
+                <a href="{{ v.URL() }}" class="hover:text-primary-600 transition-colors">{{ v.Name }}</a>
+            </li>
+            {{ end }}
+        </ol>
+    </nav>
+    
+    <!-- 标题区域 -->
+    <div class="w-gradient-hero rounded-2xl p-8 mb-8">
+        <h1 class="text-3xl font-bold text-white mb-2">{{ Data.Name }}</h1>
+        <p class="text-white/80">共 {{ res.Count }} 篇文章 · 第 {{ Page.PageNumber }}/{{ res.PageTotal }} 页</p>
+    </div>
+    
+    <!-- 子分类筛选 tab 条：顶级分类显示其子分类；子分类页显示兄弟分类 + "全部"回父级 -->
+    {{ parentCat := Category().Get(Data.ParentID) }}
+    {{ if parentCat }}
+    {{yield catTabBar(items=Category().Children(Data.ParentID), activeID=Data.ID, allURL=parentCat.URL(), tabType=Data.ContentType)}}
+    {{else if len(children) > 0}}
+    {{yield catTabBar(items=children, activeID=Data.ID, allURL="", tabType=Data.ContentType)}}
+    {{ end }}
+    
+    <!-- 文章列表（按分类内容类型选择布局；未标记类型走默认紧凑网格） -->
+    {{ if res.List }}
+    {{ if Data.ContentType == "video" }}
+        {{yield categoryVideo(list=res.List)}}
+    {{else if Data.ContentType == "novel"}}
+        {{yield categoryNovel(list=res.List)}}
+    {{else if Data.ContentType == "image"}}
+        {{yield categoryImage(list=res.List)}}
+    {{else}}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        {{ range i, v := res.List }}
+        {{ tags := Tag().Limit(2).ListByArticleID(v.ID) }}
+        <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border card-hover hover:shadow-lg relative group block overflow-hidden">
+            <div class="flex items-start">
+                <div class="w-12 h-12 w-gradient-hero rounded-lg flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
+                    {{ if v.Thumbnail != "" }}
+                    <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" class="w-12 h-12 object-cover" loading="lazy" decoding="async" width="48" height="48">
+                    {{ else }}
+                    <i class="fas fa-cube text-white text-sm" aria-hidden="true"></i>
+                    {{ end }}
+                </div>
+                <div class="flex-1 min-w-0 overflow-hidden">
+                    <h3 class="font-semibold w-text text-base mb-1 truncate">{{ v.Title }}</h3>
+                    {{ if len(tags) > 0 }}
+                    <div class="flex flex-wrap gap-1 mb-1">
+                        {{ range i, t := tags }}
+                        <span class="px-2 py-0.5 w-tag text-xs rounded-full whitespace-nowrap">{{ t.Name }}</span>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+                    <span class="text-xs w-text-3">{{ v.CreateTimeFormat() }}</span>
+                </div>
+                <button class="opacity-0 group-hover:opacity-100 absolute top-2 right-2 bg-primary-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs transition-opacity hover:bg-primary-600 flex-shrink-0">
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>
+        </a>
+        {{ end }}
+    </div>
+    {{ end }}
+
+    <!-- 分页 -->
+    {{yield pagination(pageTotal=res.PageTotal, existNextPage=res.ExistNextPage)}}
+    
+    {{ else }}
+    <!-- 空状态 -->
+    <div class="w-sunken rounded-2xl p-12 text-center">
+        <div class="w-20 h-20 w-sunken rounded-full flex items-center justify-center mx-auto mb-6">
+            <i class="fas fa-folder-open text-primary-500 text-2xl"></i>
+        </div>
+        <h3 class="text-xl font-semibold w-text mb-2">暂无文章内容</h3>
+        <p class="w-text-3 text-sm">该分类下还没有发布文章，敬请期待！</p>
+    </div>
+    {{ end }}
+</div>
+{{end}}

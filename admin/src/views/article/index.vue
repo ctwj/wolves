@@ -53,6 +53,14 @@
       align:'right',
     },
     {
+      title: '类型',
+      dataIndex: 'content_type',
+      width: 80,
+      align:'center',
+      slotName:'contentType',
+      filterable: searchFilter,
+    },
+    {
       title: t('views'),
       dataIndex: 'views',
       width: 100,

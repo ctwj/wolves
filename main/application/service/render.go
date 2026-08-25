@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"moss/application/service/contenttype"
 	"moss/domain/config"
 	"moss/domain/core/entity"
 	coreCtx "moss/domain/core/repository/context"
@@ -92,7 +93,7 @@ func (r *RenderService) TemplatePage(path string) ([]byte, error) {
 	})
 }
 
-func (r *RenderService) ArticleBySlug(slug string) (_ []byte, err error) {
+func (r *RenderService) ArticleBySlug(slug string, chapter ...int) (_ []byte, err error) {
 	item, err := service.Article.GetBySlug(slug)
 	if err != nil {
 		return
@@ -101,10 +102,10 @@ func (r *RenderService) ArticleBySlug(slug string) (_ []byte, err error) {
 	if !item.Status {
 		return nil, errors.New("article not published")
 	}
-	return r.Article(item)
+	return r.Article(item, chapter...)
 }
 
-func (r *RenderService) Article(item *entity.Article) (_ []byte, err error) {
+func (r *RenderService) Article(item *entity.Article, chapter ...int) (_ []byte, err error) {
 	if item == nil {
 		err = errors.New("item is nil")
 		return
@@ -145,6 +146,36 @@ func (r *RenderService) Article(item *entity.Article) (_ []byte, err error) {
 	// 下载暂停（版权下架）状态与正版引导 URL
 	articleMap["DownloadPaused"] = item.ArticleBase.DownloadPaused
 	articleMap["GenuineURL"] = item.ArticleBase.GenuineURL
+
+	// ===== 多媒体内容类型（wolves 主题）：契约见 specs/001-wolves-multimedia-theme/contracts/template-variables.md =====
+	// 内容类型（规范化：非法/未设置按普通处理）
+	articleMap["ContentType"] = contenttype.NormalizeContentType(item.ContentType)
+
+	// 视频选集 / 图集（Extends 键不存在时为空切片，模板 len() 判断安全）
+	articleMap["VideoList"] = contenttype.ParseVideoSources(item.Extends)
+	articleMap["ImageList"] = contenttype.ParseImageList(item.Extends)
+
+	// 小说章节：切分基于标签替换后的正文；NovelChapters 仅当前章携带 HTML，
+	// 其余章只含 Index/Title（供目录/导航），避免整本进入输出
+	contentHTML, _ := articleMap["Content"].(string)
+	chapters := contenttype.SplitNovelChapters(contentHTML)
+	chapterTotal := len(chapters)
+	reqChapter := 0
+	if len(chapter) > 0 {
+		reqChapter = chapter[0]
+	}
+	currentChapter := contenttype.ClampChapter(reqChapter, chapterTotal)
+	novelChapters := make([]contenttype.NovelChapter, len(chapters))
+	for i, ch := range chapters {
+		if i == currentChapter-1 {
+			novelChapters[i] = ch
+		} else {
+			novelChapters[i] = contenttype.NovelChapter{Index: ch.Index, Title: ch.Title}
+		}
+	}
+	articleMap["NovelChapters"] = novelChapters
+	articleMap["CurrentChapter"] = currentChapter
+	articleMap["ChapterTotal"] = chapterTotal
 
 	// 关键字拆分
 	var keywordList []string

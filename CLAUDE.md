@@ -53,6 +53,7 @@ cd main && go test -v -run TestXxx ./plugins/   # 单个测试函数
 - 模板引擎为 Jet(CloudyKit/jet v6),封装在 `infrastructure/support/template/`;`template/query/` 下 article/category/tag/link 提供模板可调用的数据查询方法,`widget/` 提供小组件。
 - 主题放在 `main/resources/themes/<name>/`,含 `theme.json`(元数据)、`template/`(index/article/category/tag/layout 等)、`public/`(静态资源)、`page/`(独立页面)。通过 `main/resources/resource.go` 的 `go:embed` 打进二进制。
 - `germ` 为上游默认主题(Tailwind CSS),`08rj` 为本项目定制主题("零八软件",软件资源下载站,配套 DownloadLimit/DirectLinkDownload 等插件的 download.html 下载模板)。
+- `wolves` 为多媒体内容主题(基于 08rj 复制改造,小说/图片/视频):文章与分类以 `content_type` 字段(novel/image/video/空=普通)驱动 `category.html`/`article.html` 内的类型分支子模板(`template/component/{category,article}/`);视频选集存 `Extends["video_sources"]`、图集存 `Extends["gallery_images"]`,小说正文用 `===chapter===` 分隔符分章(render 层按 `?chapter=N` 服务端分页,缓存 key 已并入章号)。纯函数与测试在 `main/application/service/contenttype/`。详见主题内 README 与 `specs/001-wolves-multimedia-theme/`。Jet v6 陷阱:空值判断用 truthiness 或 `len()`,勿用 `!= nil`。
 
 ### 前端(admin)
 
@@ -65,3 +66,10 @@ Vue 3 + Vite + Arco Design(部分 Naive UI)+ Pinia + Vue I18n(12 种语言),源�
 - `extras/火车头发布模块/`:火车头采集器对接 Moss 的文章发布模块(.wpm 为二进制,未跟踪)。
 - 测试文件与插件同目录(`*_test.go`);部分测试 import `domain/config`,其 init 会访问数据库,直接 `go test` 可能生成/读取本地 moss.db。
 - `.gitignore` 有意排除:conf.toml、*.db、main/public、main/themes 与 main/resources/admin 构建产物(运行时生成)、tmp/、openspec/、.claude/、docs/plans/、scripts/。
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan:
+`specs/001-wolves-multimedia-theme/plan.md` (wolves 多媒体内容主题:
+spec.md / research.md / data-model.md / contracts/ / quickstart.md)
+<!-- SPECKIT END -->

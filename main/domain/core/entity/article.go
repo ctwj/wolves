@@ -24,6 +24,7 @@ type ArticleBase struct {
 	Status      bool   `gorm:"type:boolean;default:false;index"          json:"status"` // 发布状态 true:已发布 false:未发布
 	DownloadPaused bool   `gorm:"type:boolean;default:false;index"          json:"download_paused"` // 下载暂停（版权下架） true:已暂停 false:正常
 	GenuineURL     string `gorm:"type:varchar(500);default:''"              json:"genuine_url"`     // 正版页面 URL（「请支持正版」跳转目标）
+	ContentType    string `gorm:"type:varchar(20);default:'';index"        json:"content_type"`    // 内容类型 空/standard:普通 novel:小说 image:图片 video:视频
 }
 
 func (ArticleBase) TableName() string {

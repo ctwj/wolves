@@ -1,0 +1,29 @@
+{{block categoryVideo(list)}}
+{* 视频分类布局：海报封面卡片网格（封面 + 标题 + 集数徽标 + 更新时间） *}
+<div class="video-grid mb-8">
+    {{ range i, v := list }}
+    {{ src := v.Extends.Get("video_sources") }}
+    <a href="{{ v.URL() }}" class="video-card group">
+        <div class="video-cover">
+            {{ if v.Thumbnail != "" }}
+            <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />
+            {{ else }}
+            <div class="video-cover-placeholder">
+                <i class="fas fa-film" aria-hidden="true"></i>
+            </div>
+            {{ end }}
+            {{ if src }}
+            <span class="video-ep-badge">{{ len(src) }} 集</span>
+            {{ end }}
+            <span class="video-play-overlay"><i class="fas fa-play" aria-hidden="true"></i></span>
+        </div>
+        <div class="video-info">
+            <h3 class="video-title">{{ v.Title }}</h3>
+            <div class="video-meta">
+                <span><i class="fas fa-calendar-alt mr-1" aria-hidden="true"></i>{{ v.CreateTimeFormat() }}</span>
+            </div>
+        </div>
+    </a>
+    {{ end }}
+</div>
+{{end}}

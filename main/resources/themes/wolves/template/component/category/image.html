@@ -1,0 +1,29 @@
+{{block categoryImage(list)}}
+{* 图片分类布局：缩略图画廊网格（图集首图 + 张数徽标 + 标题） *}
+<div class="gallery-grid mb-8">
+    {{ range i, v := list }}
+    {{ imgs := v.Extends.Get("gallery_images") }}
+    <a href="{{ v.URL() }}" class="gallery-card group">
+        <div class="gallery-thumb">
+            {{ if v.Thumbnail != "" }}
+            <img src="{{ v.Thumbnail }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />
+            {{ else if imgs }}
+                {{ range j, img := imgs }}
+                    {{ if j == 0 }}<img src="{{ img }}" alt="{{ v.Title }}" loading="lazy" decoding="async" />{{ end }}
+                {{ end }}
+            {{ else }}
+            <div class="gallery-thumb-placeholder">
+                <i class="fas fa-images" aria-hidden="true"></i>
+            </div>
+            {{ end }}
+            {{ if imgs }}
+            <span class="gallery-count-badge"><i class="fas fa-images mr-1" aria-hidden="true"></i>{{ len(imgs) }} 张</span>
+            {{ end }}
+        </div>
+        <div class="gallery-info">
+            <h3 class="gallery-title">{{ v.Title }}</h3>
+        </div>
+    </a>
+    {{ end }}
+</div>
+{{end}}

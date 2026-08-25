@@ -12,6 +12,7 @@ import (
 	"moss/infrastructure/support/log"
 	"moss/infrastructure/support/template"
 	"moss/plugins"
+	"strconv"
 	"strings"
 )
 
@@ -86,7 +87,14 @@ func HomeTag(ctx *fiber.Ctx) error {
 
 func HomeArticle(ctx *fiber.Ctx) error {
 	slug := ctx.Params("slug")
-	b, err := appService.Render.ArticleBySlug(slug)
+	// 小说章节分页：?chapter=N（非法值按 0 处理，渲染层钳制为第 1 章）
+	chapter := 0
+	if s := ctx.Query("chapter"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil {
+			chapter = n
+		}
+	}
+	b, err := appService.Render.ArticleBySlug(slug, chapter)
 	if err != nil {
 		if errors.Is(err, message.ErrRecordNotFound) {
 			return ctx.Next()
