@@ -80,3 +80,82 @@
 </script>
 {{ end }}
 {{end}}
+
+{{block videoSidebar()}}
+{* 视频侧栏：封面 + 视频信息 + 选集快捷列表（与主区选集联动） *}
+<div class="w-surface rounded-2xl shadow-sm border w-border mb-6 overflow-hidden">
+    {{ if Data.Thumbnail != "" }}
+    <div class="relative">
+        <img src="{{ Data.Thumbnail }}" alt="{{ Data.Title }} 封面" class="w-full h-40 object-cover" loading="lazy" decoding="async" />
+        <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" aria-hidden="true"></div>
+    </div>
+    {{ end }}
+    <div class="p-5">
+        <h3 class="text-base font-bold w-text mb-3 flex items-center">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center mr-2" style="background:rgba(251,113,133,0.14)">
+                <i class="fas fa-film" style="color:var(--w-red-strong)" aria-hidden="true"></i>
+            </div>
+            视频信息
+        </h3>
+        <div>
+            <div class="side-info-row">
+                <span class="k"><i class="fas fa-list-ol w-4" aria-hidden="true"></i>集数</span>
+                <span class="v">{{ len(Data.VideoList) }} 集</span>
+            </div>
+            {{ if Data.Category }}
+            <div class="side-info-row">
+                <span class="k"><i class="fas fa-folder w-4" aria-hidden="true"></i>分类</span>
+                <a class="v w-link" href="{{ Data.Category.URL() }}">{{ Data.Category.Name }}</a>
+            </div>
+            {{ end }}
+            <div class="side-info-row">
+                <span class="k"><i class="fas fa-calendar-alt w-4" aria-hidden="true"></i>更新</span>
+                <span class="v">{{ Data.CreateTimeFormat }}</span>
+            </div>
+            <div class="side-info-row">
+                <span class="k"><i class="fas fa-eye w-4" aria-hidden="true"></i>热度</span>
+                <span class="v">{{ Data.Views }} 次浏览</span>
+            </div>
+        </div>
+
+        {{ if len(Data.VideoList) > 1 }}
+        <h3 class="text-base font-bold w-text mt-5 mb-3 flex items-center">
+            <i class="fas fa-clone mr-2" style="color:var(--w-red-strong)" aria-hidden="true"></i>
+            快速选集
+        </h3>
+        <div class="side-episode-list">
+            {{ range i, item := Data.VideoList }}
+            <button type="button" class="side-episode-item{{ if i == 0 }} active{{ end }}" data-idx="{{ i }}">
+                <span class="no" aria-hidden="true">{{ i + 1 }}</span>
+                <span class="t">{{ if item.Label != "" }}{{ item.Label }}{{ else }}第 {{ i + 1 }} 集{{ end }}</span>
+            </button>
+            {{ end }}
+        </div>
+        {{ end }}
+    </div>
+</div>
+{{ if len(Data.VideoList) > 1 }}
+<script>
+(function () {
+    var sideItems = document.querySelectorAll('.side-episode-item');
+    sideItems.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var main = document.querySelector('.episode-item[data-idx="' + btn.getAttribute('data-idx') + '"]');
+            if (main) main.click();
+            var wrap = document.querySelector('.video-player-wrap');
+            if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+    // 主区选集切换时同步侧栏高亮
+    document.querySelectorAll('.episode-item').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var idx = btn.getAttribute('data-idx');
+            sideItems.forEach(function (s) {
+                s.classList.toggle('active', s.getAttribute('data-idx') === idx);
+            });
+        });
+    });
+})();
+</script>
+{{ end }}
+{{end}}

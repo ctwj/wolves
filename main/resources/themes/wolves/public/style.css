@@ -468,7 +468,10 @@ a:focus-visible.card-hover {
    ============================================================ */
 .video-player-wrap { background: #000; }
 .video-player { display: block; width: 100%; max-height: 76vh; }
+/* 修复：display:block 覆盖 hidden 属性，导致切集时直链播放器藏不掉 */
+.video-player[hidden] { display: none; }
 .video-embed-wrap { position: relative; aspect-ratio: 16 / 9; }
+.video-embed-wrap[hidden] { display: none; }
 .video-embed-wrap iframe {
     position: absolute;
     inset: 0;
@@ -615,6 +618,8 @@ a.novel-nav-btn:active { background: rgba(125, 211, 252, 0.1); }
     align-items: center;
     justify-content: center;
 }
+/* 修复：display:flex 会覆盖 UA 样式的 [hidden]{display:none}，导致灯箱无法关闭 */
+.lightbox[hidden] { display: none; }
 .lightbox-body {
     max-width: 92vw;
     max-height: 88vh;
@@ -653,6 +658,109 @@ a.novel-nav-btn:active { background: rgba(125, 211, 252, 0.1); }
 .lightbox-close { top: 1rem; right: 1rem; }
 .lightbox-prev { left: 1rem; top: 50%; transform: translateY(-50%); }
 .lightbox-next { right: 1rem; top: 50%; transform: translateY(-50%); }
+
+/* ============================================================
+   article 详情页：按内容类型差异化的侧栏
+   ============================================================ */
+/* 侧栏信息行 */
+.side-info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--w-border);
+    font-size: 0.84rem;
+}
+.side-info-row:last-child { border-bottom: 0; }
+.side-info-row .k { display: flex; align-items: center; gap: 0.5rem; color: var(--w-text-3); }
+.side-info-row .v { color: var(--w-text); text-align: right; min-width: 0; }
+
+/* 视频侧栏：选集快捷列表 */
+.side-episode-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.side-episode-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.65rem;
+    min-height: 44px;
+    background: var(--w-raised);
+    color: var(--w-text-2);
+    border: 1px solid var(--w-border);
+    border-radius: 0.55rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.side-episode-item:hover { border-color: var(--w-red-strong); color: var(--w-text); }
+.side-episode-item.active { border-color: var(--w-red); color: #fff; background: rgba(225, 29, 72, 0.16); }
+.side-episode-item .no { flex-shrink: 0; min-width: 1.6rem; text-align: center; font-size: 0.7rem; color: var(--w-text-3); }
+.side-episode-item.active .no { color: var(--w-red-strong); }
+.side-episode-item .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 小说章节目录 */
+.chapter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.chapter-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem 0.65rem;
+    min-height: 44px;
+    border-radius: 0.55rem;
+    background: var(--w-raised);
+    border: 1px solid transparent;
+    color: var(--w-text-2);
+    font-size: 0.84rem;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.chapter-item:hover { color: var(--w-sky); border-color: rgba(125, 211, 252, 0.4); }
+.chapter-item.active { color: var(--w-sky); border-color: var(--w-sky); background: rgba(125, 211, 252, 0.1); font-weight: 600; }
+.chapter-no { flex-shrink: 0; min-width: 1.8rem; text-align: center; font-size: 0.7rem; color: var(--w-text-3); }
+.chapter-item.active .chapter-no { color: var(--w-sky); }
+.chapter-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chapter-item.active::after {
+    content: '正在读';
+    flex-shrink: 0;
+    margin-left: auto;
+    font-size: 0.65rem;
+    font-weight: 400;
+    opacity: 0.85;
+}
+
+/* 阅读进度 */
+.read-progress { height: 6px; border-radius: 999px; background: var(--w-raised); overflow: hidden; }
+.read-progress-bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #38bdf8, #7dd3fc); }
+
+/* 侧栏滚动条与锚点防遮挡 */
+.side-episode-list::-webkit-scrollbar,
+.chapter-list::-webkit-scrollbar { width: 6px; }
+.side-episode-list::-webkit-scrollbar-thumb,
+.chapter-list::-webkit-scrollbar-thumb { background: var(--w-border); border-radius: 999px; }
+.image-viewer-grid { scroll-margin-top: 90px; }
+.video-player-wrap { scroll-margin-top: 90px; }
+
+/* 侧栏按钮键盘焦点 */
+.side-episode-item:focus-visible,
+.chapter-item:focus-visible {
+    outline: 2px solid var(--w-red-strong);
+    outline-offset: 2px;
+}
 
 /* ---------- 搜索/标签列表项：内容类型徽标 ---------- */
 .type-badge {

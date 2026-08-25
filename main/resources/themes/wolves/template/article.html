@@ -24,11 +24,11 @@
 <meta property="og:description" content="{{ Data.Description }}" />
 {{ end }}
 
-<!-- Software Application Schema -->
+<!-- Content Type Schema（视频=VideoObject / 图集=ImageGallery / 小说=Book / 普通文章=SoftwareApplication） -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": ["Article", "SoftwareApplication"],
+  "@type": {{ if Data.ContentType == "video" }}"VideoObject"{{ else if Data.ContentType == "image" }}"ImageGallery"{{ else if Data.ContentType == "novel" }}"Book"{{ else }}["Article", "SoftwareApplication"]{{ end }},
   "headline": "{{ Data.Title }}",
   "name": "{{ Data.Title }}",
   "description": "{{ Data.Description }}",
@@ -123,8 +123,27 @@
                 </div>
                 {{ end }}
                 <h1 class="text-2xl md:text-3xl font-bold w-text mb-4 leading-tight">
+                    {{ if Data.ContentType == "video" }}<span class="type-badge type-badge-video align-middle mr-2">视频</span>
+                    {{ else if Data.ContentType == "novel" }}<span class="type-badge type-badge-novel align-middle mr-2">小说</span>
+                    {{ else if Data.ContentType == "image" }}<span class="type-badge type-badge-image align-middle mr-2">图集</span>
+                    {{ end }}
                     <span style="{{ if Data.DownloadPaused }}text-decoration: line-through;{{ end }}">{{ Data.Title }}</span>
                 </h1>
+
+                <!-- 内容类型统计：视频集数 / 图集张数 / 小说章节数 -->
+                {{ if Data.ContentType == "video" && len(Data.VideoList) > 0 }}
+                <div class="flex items-center gap-2 text-sm w-text-3 mb-3">
+                    <i class="fas fa-list-ol text-primary-500" aria-hidden="true"></i>共 {{ len(Data.VideoList) }} 集
+                </div>
+                {{ else if Data.ContentType == "image" && len(Data.ImageList) > 0 }}
+                <div class="flex items-center gap-2 text-sm w-text-3 mb-3">
+                    <i class="fas fa-images text-primary-500" aria-hidden="true"></i>共 {{ len(Data.ImageList) }} 张图片
+                </div>
+                {{ else if Data.ContentType == "novel" && Data.ChapterTotal > 0 }}
+                <div class="flex items-center gap-2 text-sm w-text-3 mb-3">
+                    <i class="fas fa-book text-primary-500" aria-hidden="true"></i>共 {{ Data.ChapterTotal }} 章 · 正在读第 {{ Data.CurrentChapter }} 章
+                </div>
+                {{ end }}
                 
                 <!-- 发布时间和浏览量 -->
                 <div class="flex flex-wrap items-center gap-4 text-sm w-text-3 mb-4">
@@ -238,8 +257,15 @@
             {{ end }}
         </article>
 
-        <!-- Sidebar -->
+        <!-- Sidebar（按内容类型差异化：视频=选集信息 / 小说=章节目录 / 图集=图集信息 / 普通=软件信息卡） -->
         <aside class="w-full lg:w-80 flex-shrink-0">
+            {{ if Data.ContentType == "video" }}
+            {{yield videoSidebar()}}
+            {{else if Data.ContentType == "novel"}}
+            {{yield novelSidebar()}}
+            {{else if Data.ContentType == "image"}}
+            {{yield imageSidebar()}}
+            {{else}}
             <!-- Software Info Card -->
             <div class="w-surface rounded-2xl shadow-sm border w-border mb-6 sticky top-24 overflow-hidden">
                 {{ if Data.Thumbnail != "" }}
@@ -281,6 +307,7 @@
                     {{ end }}
                 </div>
             </div>
+            {{ end }}
 
             <!-- Related Articles -->
             {{ relatedArticles := Article().Limit(5).Order("views desc").ListByCategoryID(Data.CategoryID) }}

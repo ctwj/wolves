@@ -43,3 +43,48 @@
 </div>
 {{ end }}
 {{end}}
+
+{{block novelSidebar()}}
+{* 小说侧栏：阅读进度 + 章节目录（当前章高亮并自动滚入视野） *}
+{{ if Data.ChapterTotal > 0 }}
+<div class="w-surface rounded-2xl p-5 shadow-sm border w-border mb-6">
+    <h3 class="text-base font-bold w-text mb-3 flex items-center">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center mr-2" style="background:rgba(125,211,252,0.14)">
+            <i class="fas fa-book-open" style="color:var(--w-sky)" aria-hidden="true"></i>
+        </div>
+        阅读进度
+    </h3>
+    <p class="text-sm w-text-2 mb-2">第 {{ Data.CurrentChapter }} / {{ Data.ChapterTotal }} 章</p>
+    <div class="read-progress" role="progressbar"
+         aria-valuemin="1" aria-valuemax="{{ Data.ChapterTotal }}" aria-valuenow="{{ Data.CurrentChapter }}"
+         aria-label="阅读进度">
+        <div class="read-progress-bar" style="width: {{ Data.CurrentChapter * 100 / Data.ChapterTotal }}%"></div>
+    </div>
+</div>
+
+<div class="w-surface rounded-2xl p-5 shadow-sm border w-border mb-6">
+    <h3 class="text-base font-bold w-text mb-3 flex items-center">
+        <i class="fas fa-list-ul mr-2" style="color:var(--w-sky)" aria-hidden="true"></i>
+        章节目录
+        <span class="ml-auto text-xs font-normal w-text-3">{{ Data.ChapterTotal }} 章</span>
+    </h3>
+    <nav class="chapter-list" aria-label="章节目录">
+        {{ range i, ch := Data.NovelChapters }}
+        <a href="{{ Data.URL() }}?chapter={{ ch.Index }}"
+           class="chapter-item{{ if ch.Index == Data.CurrentChapter }} active{{ end }}"
+           {{ if ch.Index == Data.CurrentChapter }}aria-current="page"{{ end }}>
+            <span class="chapter-no" aria-hidden="true">{{ ch.Index }}</span>
+            <span class="chapter-title">{{ if ch.Title != "" }}{{ ch.Title }}{{ else }}第 {{ ch.Index }} 章{{ end }}</span>
+        </a>
+        {{ end }}
+    </nav>
+</div>
+<script>
+(function () {
+    // 打开页面时把当前章滚入目录视野
+    var cur = document.querySelector('.chapter-item.active');
+    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'center' });
+})();
+</script>
+{{ end }}
+{{end}}

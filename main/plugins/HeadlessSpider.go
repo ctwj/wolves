@@ -50,6 +50,8 @@ type spiderTask struct {
 	LinkInclude  string `json:"link_include"`  // 链接过滤：子串或 /正则/；留空不过滤
 	LinkExclude  string `json:"link_exclude"`  // 链接排除：子串或 /正则/
 
+	StopWhenExists int `json:"stop_when_exists"` // 连续 N 篇已存在则提前结束任务（0=不启用）；定时增量采集推荐 3~5
+
 	TitleSel    string `json:"title_sel"`    // 详情页标题选择器（回退 <title>）
 	CoverSel    string `json:"cover_sel"`    // 封面选择器（取 src；回退 og:image）
 	ContentSel  string `json:"content_sel"`  // 正文容器选择器（取 innerHTML）
@@ -83,12 +85,22 @@ func (h *HeadlessSpider) Info() *pluginEntity.PluginInfo {
 	return &pluginEntity.PluginInfo{
 		ID:   "HeadlessSpider",
 		About: "通用无头采集插件（多任务）：tasks 配置 JSON 任务数组，" +
-			"每任务独立选择器/翻页/链接过滤/extends 提取/入库类型；浏览器全局配置共享",
+			"每任务独立选择器/翻页/链接过滤/extends 提取/入库类型；浏览器全局配置共享。支持定时增量采集（stop_when_exists）",
+		RunEnable:  true,
+		CronEnable: true,
+		PluginInfoPersistent: pluginEntity.PluginInfoPersistent{
+			CronStart: false,
+			CronExp:   "@every 1h",
+		},
 	}
 }
 
 func (h *HeadlessSpider) Load(ctx *pluginEntity.Plugin) error {
 	h.ctx = ctx
+	// 数据库旧记录的 cron_exp 为空时补默认值，避免装载失败
+	if ctx.Info.CronEnable && ctx.Info.CronExp == "" {
+		ctx.Info.CronExp = "@every 1h"
+	}
 	return nil
 }
 
@@ -160,7 +172,14 @@ func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {
 	return tasks, nil
 }
 
+// spiderLink 列表页提取的详情链接及其标题（用于预查重，已存在则无需打开详情页）
+type spiderLink struct {
+	URL   string
+	Title string
+}
+
 func (h *HeadlessSpider) runTask(browser *rod.Browser, t *spiderTask) (collected, skipped, failed int) {
+	consecExists := 0
 	for page := 1; page <= t.MaxPages; page++ {
 		pageURL := h.pageURL(t, page)
 		h.ctx.Log.Info("采集列表页", zap.String("task", t.Name), zap.Int("page", page), zap.String("url", pageURL))
@@ -178,16 +197,38 @@ func (h *HeadlessSpider) runTask(browser *rod.Browser, t *spiderTask) (collected
 		}
 
 		for _, link := range links {
-			article, err := h.fetchArticle(browser, t, link)
+			// 预查重：列表页标题可用时直接比对 slug，已存在则不打开详情页
+			if link.Title != "" {
+				slug := hashSlug(link.URL, link.Title)
+				if exists, err := service.Article.ExistsSlug(slug); err == nil && exists {
+					skipped++
+					consecExists++
+					h.ctx.Log.Debug("文章已存在（预查），跳过", zap.String("url", link.URL))
+					if t.StopWhenExists > 0 && consecExists >= t.StopWhenExists {
+						h.ctx.Log.Info("连续多篇已存在，提前结束任务", zap.String("task", t.Name),
+							zap.Int("consecutive", consecExists), zap.Int("page", page))
+						return
+					}
+					continue
+				}
+			}
+			article, err := h.fetchArticle(browser, t, link.URL)
 			if err != nil {
-				h.ctx.Log.Error("采集失败", zap.String("url", link), zap.Error(err))
+				h.ctx.Log.Error("采集失败", zap.String("url", link.URL), zap.Error(err))
 				failed++
 				continue
 			}
 			if article == nil {
 				skipped++
+				consecExists++
+				if t.StopWhenExists > 0 && consecExists >= t.StopWhenExists {
+					h.ctx.Log.Info("连续多篇已存在，提前结束任务", zap.String("task", t.Name),
+						zap.Int("consecutive", consecExists), zap.Int("page", page))
+					return
+				}
 				continue
 			}
+			consecExists = 0
 			if err := service.Article.Create(article); err != nil {
 				h.ctx.Log.Error("创建文章失败", zap.String("title", article.Title), zap.Error(err))
 				failed++
@@ -250,8 +291,9 @@ func (h *HeadlessSpider) pageURL(t *spiderTask, page int) string {
 	return strings.ReplaceAll(t.PageURLPattern, "{page}", fmt.Sprintf("%d", page))
 }
 
-// extractLinks 打开列表页，等待渲染后提取详情链接（绝对化、去重、include/exclude 过滤）
-func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageURL string) (links []string, pageTitle string, err error) {
+// extractLinks 打开列表页，等待渲染后提取详情链接（绝对化、去重、include/exclude 过滤），
+// 同时提取链接内标题（优先 h1~h6，回退链接文本首行），供预查重使用
+func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageURL string) (links []spiderLink, pageTitle string, err error) {
 	page, err := h.newPage(browser)
 	if err != nil {
 		return nil, "", err
@@ -310,7 +352,24 @@ func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageU
 			continue
 		}
 		seen[abs] = struct{}{}
-		links = append(links, abs)
+
+		// 提取标题：优先链接内的标题元素，回退链接文本首行
+		title := ""
+		if h1, err := el.Element("h1,h2,h3,h4,h5,h6"); err == nil {
+			if txt, err := h1.Text(); err == nil {
+				title = strings.TrimSpace(txt)
+			}
+		}
+		if title == "" {
+			if txt, err := el.Text(); err == nil {
+				txt = strings.TrimSpace(txt)
+				if i := strings.IndexAny(txt, "\n\r"); i > 0 {
+					txt = txt[:i]
+				}
+				title = strings.TrimSpace(txt)
+			}
+		}
+		links = append(links, spiderLink{URL: abs, Title: title})
 	}
 	return links, pageTitle, nil
 }
