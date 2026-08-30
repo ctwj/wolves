@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-定制版 Moss CMS(Go 模块名 `moss`,fork 自开源 Moss CMS,上游 remote 为 github.com/ctwj/moss)。Go 后端(Fiber + GORM + Zap + Viper)+ Vue 3 管理后台 + Jet 模板主题,支持 sqlite/mysql/postgresql。本仓库为完整可构建工程;同机 `G:\server\moss` 是原始工作副本(含 conf.toml、moss.db 等运行时数据,两边 git 独立,改代码后需手动同步)。
+定制版 Moss CMS(Go 模块名 `moss`,fork 自开源 Moss CMS,上游 remote 为 github.com/ctwj/moss)。Go 后端(Fiber + GORM + Zap + Viper)+ Vue 3 管理后台 + Jet 模板主题,支持 sqlite/mysql/postgresql。本仓库为完整可构建工程,可直接在本机运行(`main/conf.toml`、`main/moss.db`、`main/themes/` 等运行时数据均为 git 忽略的本地文件);Windows 机器上的 `G:\server\moss` 是另一份原始工作副本,两边 git 独立,改代码后需手动同步。
+
+**启动时间锁**:`main/startup/startup.go` 中 `expireAt = 2027-01-01`,到期后程序拒绝启动、运行中的实例也会自动退出。2027 年后排查"起不来/莫名退出"先看这里。
 
 历史背景:本仓库最初只提交了相对上游的定制文件(2026-08 从 moss 补齐核心文件后成为完整工程),因此全部插件、`08rj` 主题、模板引擎/缓存/上传等处的改动都是本项目定制内容,与上游 moss 不同。
 
@@ -12,8 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 task dev                  # 完整开发环境:后端 Air 热重载 (:9008) + 前端 Vite (:3000/admin/)
-task run                  # 仅启动后端(无热重载)
-task build                # 生产构建:前端 + Linux AMD64 后端(产物在 dist/)
+task run                  # 仅启动后端(无热重载;注意它 cd 到 main/tmp 再 go run,相对 dsn 会落在 main/tmp/)
+task build                # 生产构建:前端 + Linux AMD64 后端(产物在 dist/,旧产物轮转进 dist/backup/)
 task build-admin          # 仅构建前端
 
 cd main && go test ./...              # 全部后端测试
@@ -24,8 +26,9 @@ cd main && go test -v -run TestXxx ./plugins/   # 单个测试函数
 - **前端包管理器是 pnpm**(`admin/pnpm-lock.yaml`,CI 也用 pnpm;Taskfile 里写的 `npm run` 同样可用,因为走的都是 package.json scripts)。依赖安装:`cd admin && pnpm install`。
 - **重要**:`go:embed` 嵌入的 `main/resources/admin/` 只有 `.empty`(点开头文件不参与 embed),**必须先构建前端才能编译后端**(`main/resources/admin/*` 已被 git 忽略,只跟踪 `.empty`)。`task build` 和 CI 都遵循"先前端后后端"的顺序;全新克隆后直接 `go build` 会报 `cannot embed directory admin`。
 - 运行时配置 `main/conf.toml`(git 忽略,仓库中没有):`addr`/`db`/`dsn` 三项,dsn 示例见 README.md;可从 `G:\server\moss\main\conf.toml` 参考(内含数据库连接串,勿提交)。
-- 二进制命令行参数:`--username` / `--password` / `--adminpath` / `--config` 可重置管理员、后台路径或指定配置文件(见 `main/startup/startup.go`)。
-- CI(`.github/workflows/release.yml`):推送 `v*` tag 或手动触发 → 构建 admin 前端 → Go 1.23 六平台交叉编译(UPX 压缩)→ 创建 GitHub Release,默认端口 9008。
+- 二进制命令行参数:`--username` / `--password` / `--adminpath` / `--config` 可重置管理员、后台路径或指定配置文件(见 `main/startup/startup.go`)。`task reset-admin` 重置为 admin/admin123(10 分钟内有效)。
+- Go 版本:`go.mod` 声明 `go 1.25.0`,本地工具链需 ≥1.25(或依赖 GOTOOLCHAIN 自动下载);CI 里 setup-go 固定的 1.23 正是靠自动切换工具链才编译得过。
+- CI(`.github/workflows/release.yml`):推送 `v*` tag 或手动触发 → 构建 admin 前端(pnpm 10 / Node 24)→ 六平台交叉编译(linux/windows/darwin × amd64/arm64,仅部分平台 UPX)→ 实际运行二进制验证 embed → 创建 GitHub Release,默认端口 9008。
 - 换行符:仓库索引为 LF(`core.autocrlf=true`);从 `G:\server\moss`(工作区 CRLF)复制文件时注意 `diff` 会全量报差异,先做换行符归一化再比。
 
 ## 架构
@@ -43,17 +46,18 @@ cd main && go test -v -run TestXxx ./plugins/   # 单个测试函数
   Run(ctx *Plugin) error  // 手动/定时(cron)执行的任务
   ```
 - 插件结构体的导出字段即配置项(json tag),持久化到数据库并可在后台编辑。
-- **必须**在 `main/startup/startup.go` 的 `initPlugins()` 中注册(`appService.PluginInit(plugins.NewXxx(), ...)`),未注册的插件(如 `NewDidiAuto`、`PushToBaidu`、`PushToBing`)处于注释停用状态。
+- **必须**在 `main/startup/startup.go` 的 `initPlugins()` 中注册(`appService.PluginInit(plugins.NewXxx(), ...)`);新增插件后记得来这里登记。当前被注释停用的:`NewDidiAuto`、`PushToBaidu`、`PushToBing`、`NewGenerateDescription`。
 - 事件钩子:`domain/core/event/` 定义 `ArticleCreateBefore`/`ArticleUpdateBefore` 等接口,插件在 `Load()` 里自注册,如 `service.Article.AddCreateBeforeEvents(s)`(见 `SaveArticleImages.go`、`ArticleSanitizer.go`)。文章保存时这些钩子会被领域服务回调。
-- 插件分类:内容处理(ArticleSanitizer、GenerateSlug、SaveArticleImages、DetectLinks、PreBuildArticleCache、MakeCarousel、PostStore 定时从仓库发布文章)、SEO 推送(PushToSearchEngine 统一百度+Bing,已取代 PushToBaidu/PushToBing)、网盘转存(BaiduCloudTransfer、QuarkCloudTransfer、DirectLinkDownload)、采集(GnDownSpider)、下载限流(DownloadLimit)、AI SEO(AISeoPlugin)、外链处理(ExternalLinkPlugin)。百度相关公共逻辑在 `main/plugins/baidu_utils/`。
+- 插件分类:内容处理(ArticleSanitizer、GenerateSlug、SaveArticleImages、DetectLinks、PreBuildArticleCache、MakeCarousel、PostStore 定时从仓库发布文章)、SEO 推送(PushToSearchEngine 统一百度+Bing,已取代 PushToBaidu/PushToBing)、网盘转存(BaiduCloudTransfer、QuarkCloudTransfer、DirectLinkDownload)、采集(GnDownSpider、HeadlessSpider)、下载限流(DownloadLimit)、AI SEO(AISeoPlugin)、外链处理(ExternalLinkPlugin)。百度相关公共逻辑在 `main/plugins/baidu_utils/`。
 - 已知问题(继承自 moss,未修复):`go vet` 报 `AISeoPlugin.go` 多处复制含 `sync.Mutex` 的 `APIConfig` 结构体值。
 
 ### 主题与模板
 
 - 模板引擎为 Jet(CloudyKit/jet v6),封装在 `infrastructure/support/template/`;`template/query/` 下 article/category/tag/link 提供模板可调用的数据查询方法,`widget/` 提供小组件。
 - 主题放在 `main/resources/themes/<name>/`,含 `theme.json`(元数据)、`template/`(index/article/category/tag/layout 等)、`public/`(静态资源)、`page/`(独立页面)。通过 `main/resources/resource.go` 的 `go:embed` 打进二进制。
+- **主题开发回路陷阱**:程序启动时把 embed 的主题**释放**到运行目录 `main/themes/<name>/`,且目标已存在则不覆盖——因此直接改 `main/resources/themes/` 源码对正在运行的站点**不生效**;需删掉 `main/themes/<name>` 重启(或跑 sync 脚本,Windows 机器上有未跟踪的 `scripts/sync-wolves-theme.ps1`,注意 sync 后 fsnotify 热重载不可靠,建议重启进程)。`main/themes/` 本身 git 忽略。
 - `germ` 为上游默认主题(Tailwind CSS),`08rj` 为本项目定制主题("零八软件",软件资源下载站,配套 DownloadLimit/DirectLinkDownload 等插件的 download.html 下载模板)。
-- `wolves` 为多媒体内容主题(基于 08rj 复制改造,小说/图片/视频):文章与分类以 `content_type` 字段(novel/image/video/空=普通)驱动 `category.html`/`article.html` 内的类型分支子模板(`template/component/{category,article}/`);视频选集存 `Extends["video_sources"]`、图集存 `Extends["gallery_images"]`,小说正文用 `===chapter===` 分隔符分章(render 层按 `?chapter=N` 服务端分页,缓存 key 已并入章号)。纯函数与测试在 `main/application/service/contenttype/`。详见主题内 README 与 `specs/001-wolves-multimedia-theme/`。Jet v6 陷阱:空值判断用 truthiness 或 `len()`,勿用 `!= nil`。
+- `wolves` 为多媒体内容主题(基于 08rj 复制改造,小说/图片/视频):文章与分类以 `content_type` 字段(novel/image/video/空=普通)驱动 `category.html`/`article.html` 内的类型分支子模板(`template/component/{category,article}/`);视频选集存 `Extends["video_sources"]`、图集存 `Extends["gallery_images"]`,小说正文用 `===chapter===` 分隔符分章(render 层按 `?chapter=N` 服务端分页,缓存 key 已并入章号)。纯函数与测试在 `main/application/service/contenttype/`。详见主题内 README(含 Cinema Dark 设计系统与子菜单五场景说明)。Jet v6 陷阱:空值判断用 truthiness 或 `len()`,勿用 `!= nil`。**wolves 样式陷阱**:`public/tailwind.css` 是预编译产物,新写的 Tailwind 原子类(如 `pt-28`)不会生效——新样式一律写自定义/语义类(`w-surface`/`w-text` 等)进 `public/style.css`,勿引入 `bg-white`/`text-gray-*` 等亮色类。
 
 ### 前端(admin)
 
@@ -65,7 +69,7 @@ Vue 3 + Vite + Arco Design(部分 Naive UI)+ Pinia + Vue I18n(12 种语言),源�
 - `AGENTS.md` / `DEVELOPMENT.md`:另一套开发规范文档(与本文档内容重叠,侧重点不同)。
 - `extras/火车头发布模块/`:火车头采集器对接 Moss 的文章发布模块(.wpm 为二进制,未跟踪)。
 - 测试文件与插件同目录(`*_test.go`);部分测试 import `domain/config`,其 init 会访问数据库,直接 `go test` 可能生成/读取本地 moss.db。
-- `.gitignore` 有意排除:conf.toml、*.db、main/public、main/themes 与 main/resources/admin 构建产物(运行时生成)、tmp/、openspec/、.claude/、docs/plans/、scripts/。
+- `.gitignore` 有意排除:conf.toml、*.db、main/public、main/themes 与 main/resources/admin 构建产物(运行时生成)、tmp/、openspec/、.claude/、docs/plans/、scripts/、**specs/**(下方 SPECKIT 指向的规格目录因此只存在于当初做规格那台机器,克隆里没有属正常)。
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
