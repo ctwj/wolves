@@ -15,10 +15,10 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 	"go.uber.org/zap"
 
-	pluginEntity "moss/domain/support/entity"
 	"moss/domain/core/entity"
 	"moss/domain/core/service"
 	"moss/domain/core/vo"
+	pluginEntity "moss/domain/support/entity"
 )
 
 // HeadlessSpider 通用无头浏览器采集插件
@@ -38,25 +38,31 @@ type HeadlessSpider struct {
 
 // spiderTask 单个采集任务
 type spiderTask struct {
-	Name           string `json:"name"`            // 任务名（日志区分）
-	Enable         bool   `json:"enable"`          // 是否启用
-	SourceURL      string `json:"source_url"`      // 起始页 URL
+	Name           string `json:"name"`             // 任务名（日志区分）
+	Enable         bool   `json:"enable"`           // 是否启用
+	SourceURL      string `json:"source_url"`       // 起始页 URL
 	PageURLPattern string `json:"page_url_pattern"` // 翻页模板，含 {page}；留空只采起始页
-	MaxPages       int    `json:"max_pages"`       // 最多翻页数（默认 1）
+	MaxPages       int    `json:"max_pages"`        // 最多翻页数（默认 1）
 
-	Mode         string `json:"mode"`         // detail=进详情页提取（默认）| list=列表页直接入库
+	Mode         string `json:"mode"`          // detail=进详情页提取（默认）| list=列表页直接入库
 	WaitSelector string `json:"wait_selector"` // 渲染完成等待元素；留空等 DOM 稳定
 	ListSelector string `json:"list_selector"` // 列表页详情链接选择器
 	LinkInclude  string `json:"link_include"`  // 链接过滤：子串或 /正则/；留空不过滤
 	LinkExclude  string `json:"link_exclude"`  // 链接排除：子串或 /正则/
 
+	ListTitleSel string `json:"list_title_sel"` // 列表条目标题选择器（预查重用；回退 h1~h6/首行文本）
+	LinkMode     string `json:"link_mode"`      // 链接获取：空=读 href（默认）| click=模拟点击劫持 window.open（适配 javascript:void(0) 点击跳转站）
+	// click 模式下默认只收与列表页同源的跳转（广告弹窗几乎都是跨域，自动丢弃）；
+	// 详情确在另一域名时才置 true
+	LinkCrossOrigin bool `json:"link_cross_origin"`
+
 	StopWhenExists int `json:"stop_when_exists"` // 连续 N 篇已存在则提前结束任务（0=不启用）；定时增量采集推荐 3~5
 
-	TitleSel    string `json:"title_sel"`    // 详情页标题选择器（回退 <title>）
-	CoverSel    string `json:"cover_sel"`    // 封面选择器（取 src；回退 og:image）
-	ContentSel  string `json:"content_sel"`  // 正文容器选择器（取 innerHTML）
+	TitleSel    string `json:"title_sel"`     // 详情页标题选择器（回退 <title>）
+	CoverSel    string `json:"cover_sel"`     // 封面选择器（取 src；回退 og:image）
+	ContentSel  string `json:"content_sel"`   // 正文容器选择器（取 innerHTML）
 	VideoSrcSel string `json:"video_src_sel"` // 播放源选择器（video/iframe src）→ extends[video_sources]
-	GallerySel  string `json:"gallery_sel"`  // 图集图片选择器 → extends[gallery_images]
+	GallerySel  string `json:"gallery_sel"`   // 图集图片选择器 → extends[gallery_images]
 
 	Extra []spiderExtra `json:"extra"` // 通用 extends 键值提取（任意 key）
 
@@ -83,9 +89,10 @@ func NewHeadlessSpider() *HeadlessSpider {
 
 func (h *HeadlessSpider) Info() *pluginEntity.PluginInfo {
 	return &pluginEntity.PluginInfo{
-		ID:   "HeadlessSpider",
+		ID: "HeadlessSpider",
 		About: "通用无头采集插件（多任务）：tasks 配置 JSON 任务数组，" +
-			"每任务独立选择器/翻页/链接过滤/extends 提取/入库类型；浏览器全局配置共享。支持定时增量采集（stop_when_exists）",
+			"每任务独立选择器/翻页/链接过滤/extends 提取/入库类型；浏览器全局配置共享。支持定时增量采集（stop_when_exists）。" +
+			"link_mode=click 时模拟点击劫持 window.open，适配 javascript:void(0) 点击跳转站",
 		RunEnable:  true,
 		CronEnable: true,
 		PluginInfoPersistent: pluginEntity.PluginInfoPersistent{
@@ -326,6 +333,11 @@ func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageU
 		base, _ = url.Parse(pageURL)
 	}
 
+	if t.LinkMode == "click" {
+		links, err = h.extractLinksByClick(page, t, base)
+		return links, pageTitle, err
+	}
+
 	els, err := page.Elements(t.ListSelector)
 	if err != nil {
 		return nil, pageTitle, fmt.Errorf("list_selector 无匹配: %w", err)
@@ -374,6 +386,92 @@ func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageU
 	return links, pageTitle, nil
 }
 
+// extractLinksByClick 点击拦截模式：劫持 window.open（只记录不真开新窗），对 list_selector
+// 匹配的每个元素派发 click（含元素内的 a/button，选择器填条目容器或可点元素均可），
+// 捕获 Vue @click 等跳转处理器生成的详情 URL——适用于 href="javascript:void(0)" 的站点。
+// 处理器同步或 800ms 内异步均能捕获；标题仅在捕获数与条目数一致时按下标配对（仅预查重优化，
+// 不一致时留空，去重仍由详情页真实标题兜底）。
+func (h *HeadlessSpider) extractLinksByClick(page *rod.Page, t *spiderTask, base *url.URL) ([]spiderLink, error) {
+	js := `(listSel, titleSel) => {
+		const captured = [];
+		const origOpen = window.open;
+		window.open = function (u) { if (u) captured.push(String(u)); return null; };
+		const els = Array.from(document.querySelectorAll(listSel));
+		const titles = els.map(el => {
+			let n = titleSel ? el.querySelector(titleSel) : null;
+			if (!n) n = el.querySelector('h1,h2,h3,h4,h5,h6');
+			let text = n ? n.textContent : el.textContent;
+			text = (text || '').trim();
+			const i = text.search(/\n|\r/);
+			return i > 0 ? text.slice(0, i).trim() : text;
+		});
+		els.forEach(el => {
+			el.click();
+			el.querySelectorAll('a, button, [role="button"]').forEach(c => c.click());
+		});
+		return new Promise(resolve => setTimeout(() => {
+			window.open = origOpen;
+			resolve(JSON.stringify({ urls: captured, titles: titles }));
+		}, 800));
+	}`
+	res, err := page.Eval(js, t.ListSelector, t.ListTitleSel)
+	if err != nil {
+		return nil, fmt.Errorf("click 模式执行失败: %w", err)
+	}
+	var payload struct {
+		URLs   []string `json:"urls"`
+		Titles []string `json:"titles"`
+	}
+	if err := json.Unmarshal([]byte(res.Value.Str()), &payload); err != nil {
+		return nil, fmt.Errorf("click 模式返回解析失败: %w", err)
+	}
+	pairTitles := len(payload.Titles) == len(payload.URLs)
+
+	var links []spiderLink
+	crossDropped := 0
+	seen := map[string]struct{}{}
+	for i, u := range payload.URLs {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		ref, parseErr := url.Parse(u)
+		if parseErr != nil {
+			continue
+		}
+		// 同源校验：click 劫持捕获的跨域 URL 视为广告/统计弹窗丢弃（相对路径天然同源）
+		if !t.LinkCrossOrigin && ref.Host != "" && !sameSite(ref.Host, base.Host) {
+			crossDropped++
+			h.ctx.Log.Debug("click 捕获跨域跳转，按广告丢弃", zap.String("url", u),
+				zap.String("host", ref.Host), zap.String("site", base.Host))
+			continue
+		}
+		abs := base.ResolveReference(ref).String()
+		abs = strings.SplitN(abs, "#", 2)[0]
+		if abs == "" || abs == base.String() {
+			continue
+		}
+		if !matchFilter(abs, t.LinkInclude, t.LinkExclude) {
+			continue
+		}
+		if _, dup := seen[abs]; dup {
+			continue
+		}
+		seen[abs] = struct{}{}
+		title := ""
+		if pairTitles {
+			title = payload.Titles[i]
+		}
+		links = append(links, spiderLink{URL: abs, Title: title})
+	}
+	if crossDropped > 0 {
+		h.ctx.Log.Info("click 捕获跳转过滤完成", zap.String("task", t.Name),
+			zap.Int("captured", len(payload.URLs)), zap.Int("cross_origin_dropped", crossDropped),
+			zap.Int("kept", len(links)))
+	}
+	return links, nil
+}
+
 // matchFilter 链接过滤：include 为空=放行；include/exclude 支持子串或 /正则/ 形式
 func matchFilter(link, include, exclude string) bool {
 	if include != "" && !matchOne(link, include) {
@@ -392,6 +490,13 @@ func matchOne(s, pattern string) bool {
 		}
 	}
 	return strings.Contains(s, pattern)
+}
+
+// sameSite 判断两个 host 是否同一站点：忽略 www. 前缀，允许子域互认
+// （example.tv 与 www.example.tv / m.example.tv 视为同源）
+func sameSite(a, b string) bool {
+	a, b = strings.ToLower(strings.TrimPrefix(a, "www.")), strings.ToLower(strings.TrimPrefix(b, "www."))
+	return a == b || strings.HasSuffix(a, "."+b) || strings.HasSuffix(b, "."+a)
 }
 
 // fetchArticle 打开详情页提取字段并构造文章（已存在则返回 nil）
