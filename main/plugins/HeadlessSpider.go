@@ -44,14 +44,26 @@ type spiderTask struct {
 	PageURLPattern string `json:"page_url_pattern"` // 翻页模板，含 {page}；留空只采起始页
 	MaxPages       int    `json:"max_pages"`        // 最多翻页数（默认 1）
 
-	Mode         string `json:"mode"`          // detail=进详情页提取（默认）| list=列表页直接入库
+	Mode         string `json:"mode"`          // detail=进详情页提取（默认）；list 预留未实现，当前行为恒同 detail
 	WaitSelector string `json:"wait_selector"` // 渲染完成等待元素；留空等 DOM 稳定
 	ListSelector string `json:"list_selector"` // 列表页详情链接选择器
 	LinkInclude  string `json:"link_include"`  // 链接过滤：子串或 /正则/；留空不过滤
 	LinkExclude  string `json:"link_exclude"`  // 链接排除：子串或 /正则/
 
 	ListTitleSel string `json:"list_title_sel"` // 列表条目标题选择器（预查重用；回退 h1~h6/首行文本）
-	LinkMode     string `json:"link_mode"`      // 链接获取：空=读 href（默认）| click=模拟点击劫持 window.open（适配 javascript:void(0) 点击跳转站）
+
+	LinkMode string `json:"link_mode"` // 链接获取：空/href=属性提取（默认）| click=模拟点击劫持 window.open（自动叠加属性提取，适配 javascript:void(0) 点击跳转站）
+	// 属性提取通道的组合配置（href 与 click 模式均生效）：
+	// link_selector 定位条目内的链接元素（空=条目自身），适配容器型条目；
+	// link_attr 读哪个属性（默认 href，可为 data-url/data-src 等）；
+	// link_extract_regex 从属性值抽取 URL 的正则（可 /re/ 包裹，取第一个捕获组，无捕获组取整段匹配），
+	//   适配 onclick="location.href='...'" 这类内嵌地址；
+	// link_url_template 拼接最终 URL（含 {value} 则以属性值替换，否则视为前缀拼接），
+	//   适配 data-id 拼详情地址的站点
+	LinkSelector     string `json:"link_selector"`
+	LinkAttr         string `json:"link_attr"`
+	LinkExtractRegex string `json:"link_extract_regex"`
+	LinkURLTemplate  string `json:"link_url_template"`
 	// click 模式下默认只收与列表页同源的跳转（广告弹窗几乎都是跨域，自动丢弃）；
 	// 详情确在另一域名时才置 true
 	LinkCrossOrigin bool `json:"link_cross_origin"`
@@ -92,7 +104,8 @@ func (h *HeadlessSpider) Info() *pluginEntity.PluginInfo {
 		ID: "HeadlessSpider",
 		About: "通用无头采集插件（多任务）：tasks 配置 JSON 任务数组，" +
 			"每任务独立选择器/翻页/链接过滤/extends 提取/入库类型；浏览器全局配置共享。支持定时增量采集（stop_when_exists）。" +
-			"link_mode=click 时模拟点击劫持 window.open，适配 javascript:void(0) 点击跳转站",
+			"取链可组合：link_selector/link_attr/link_extract_regex/link_url_template（href、data-*、onclick 内嵌地址、data-id 拼URL）；" +
+			"link_mode=click 模拟点击劫持 window.open 适配 javascript:void(0) 站（叠加属性提取、默认仅同源防广告）",
 		RunEnable:  true,
 		CronEnable: true,
 		PluginInfoPersistent: pluginEntity.PluginInfoPersistent{
@@ -174,6 +187,14 @@ func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {
 		}
 		if t.SourceURL == "" || t.ListSelector == "" {
 			return nil, fmt.Errorf("任务[%d]%s 缺少 source_url 或 list_selector", i+1, t.Name)
+		}
+		if t.LinkMode != "" && t.LinkMode != "href" && t.LinkMode != "click" {
+			return nil, fmt.Errorf("任务[%d]%s link_mode 无效（仅支持 href/click）: %q", i+1, t.Name, t.LinkMode)
+		}
+		if t.LinkExtractRegex != "" {
+			if _, err := compileLinkRegex(t.LinkExtractRegex); err != nil {
+				return nil, fmt.Errorf("任务[%d]%s link_extract_regex 无效: %w", i+1, t.Name, err)
+			}
 		}
 	}
 	return tasks, nil
@@ -298,8 +319,8 @@ func (h *HeadlessSpider) pageURL(t *spiderTask, page int) string {
 	return strings.ReplaceAll(t.PageURLPattern, "{page}", fmt.Sprintf("%d", page))
 }
 
-// extractLinks 打开列表页，等待渲染后提取详情链接（绝对化、去重、include/exclude 过滤），
-// 同时提取链接内标题（优先 h1~h6，回退链接文本首行），供预查重使用
+// extractLinks 打开列表页，等待渲染后提取详情链接：
+// href 模式走属性提取通道（extractLinksByHref）；click 模式双通道（属性提取+点击拦截）合并去重
 func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageURL string) (links []spiderLink, pageTitle string, err error) {
 	page, err := h.newPage(browser)
 	if err != nil {
@@ -334,27 +355,66 @@ func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageU
 	}
 
 	if t.LinkMode == "click" {
-		links, err = h.extractLinksByClick(page, t, base)
-		return links, pageTitle, err
+		// click 模式 = 属性提取 + 点击拦截 双通道合并去重（部分条目有真实链接、部分靠 JS 跳转的混合站也能全覆盖）
+		hrefLinks, herr := h.extractLinksByHref(page, t, base)
+		clickLinks, cerr := h.extractLinksByClick(page, t, base)
+		if cerr != nil && len(hrefLinks) == 0 {
+			return nil, pageTitle, cerr
+		}
+		if cerr != nil {
+			h.ctx.Log.Warn("click 拦截失败，仅使用属性提取结果", zap.Error(cerr))
+		}
+		if herr != nil {
+			h.ctx.Log.Debug("属性提取通道失败", zap.Error(herr))
+		}
+		seenURL := make(map[string]struct{}, len(hrefLinks))
+		for _, l := range hrefLinks {
+			seenURL[l.URL] = struct{}{}
+			links = append(links, l)
+		}
+		for _, l := range clickLinks {
+			if _, dup := seenURL[l.URL]; !dup {
+				links = append(links, l)
+			}
+		}
+		return links, pageTitle, nil
 	}
 
+	links, err = h.extractLinksByHref(page, t, base)
+	return links, pageTitle, err
+}
+
+// extractLinksByHref 属性取链通道：遍历 list_selector 匹配的条目元素，
+// 按 link_selector（空=条目自身）定位链接元素，读 link_attr（默认 href）属性值，
+// 经 link_extract_regex 抽取 / link_url_template 拼接得到详情 URL；
+// 相对路径绝对化、include/exclude 过滤、去重；标题取条目文本（仅预查重用）
+func (h *HeadlessSpider) extractLinksByHref(page *rod.Page, t *spiderTask, base *url.URL) ([]spiderLink, error) {
 	els, err := page.Elements(t.ListSelector)
 	if err != nil {
-		return nil, pageTitle, fmt.Errorf("list_selector 无匹配: %w", err)
+		return nil, fmt.Errorf("list_selector 无匹配: %w", err)
 	}
+	var links []spiderLink
 	seen := map[string]struct{}{}
 	for _, el := range els {
-		href, err := el.Attribute("href")
-		if err != nil || href == nil || *href == "" || strings.HasPrefix(*href, "javascript:") {
+		linkEl := el
+		if t.LinkSelector != "" {
+			sub, subErr := el.Element(t.LinkSelector)
+			if subErr != nil {
+				continue // 条目内无链接元素
+			}
+			linkEl = sub
+		}
+		raw := t.linkValue(linkEl)
+		if raw == "" || strings.HasPrefix(raw, "javascript:") {
 			continue
 		}
-		hrefURL, parseErr := url.Parse(*href)
+		ref, parseErr := url.Parse(raw)
 		if parseErr != nil {
 			continue
 		}
-		abs := base.ResolveReference(hrefURL).String()
+		abs := base.ResolveReference(ref).String()
 		abs = strings.SplitN(abs, "#", 2)[0]
-		if abs == "" || abs == baseURL {
+		if abs == "" || abs == base.String() {
 			continue
 		}
 		if !matchFilter(abs, t.LinkInclude, t.LinkExclude) {
@@ -364,26 +424,89 @@ func (h *HeadlessSpider) extractLinks(browser *rod.Browser, t *spiderTask, pageU
 			continue
 		}
 		seen[abs] = struct{}{}
-
-		// 提取标题：优先链接内的标题元素，回退链接文本首行
-		title := ""
-		if h1, err := el.Element("h1,h2,h3,h4,h5,h6"); err == nil {
-			if txt, err := h1.Text(); err == nil {
-				title = strings.TrimSpace(txt)
-			}
-		}
-		if title == "" {
-			if txt, err := el.Text(); err == nil {
-				txt = strings.TrimSpace(txt)
-				if i := strings.IndexAny(txt, "\n\r"); i > 0 {
-					txt = txt[:i]
-				}
-				title = strings.TrimSpace(txt)
-			}
-		}
-		links = append(links, spiderLink{URL: abs, Title: title})
+		links = append(links, spiderLink{URL: abs, Title: itemTitle(el, t.ListTitleSel)})
 	}
-	return links, pageTitle, nil
+	return links, nil
+}
+
+// itemTitle 条目标题：list_title_sel 优先，回退 h1~h6，再回退条目文本首行
+func itemTitle(el *rod.Element, titleSel string) string {
+	if titleSel != "" {
+		if n, err := el.Element(titleSel); err == nil {
+			if txt, err := n.Text(); err == nil {
+				if s := strings.TrimSpace(txt); s != "" {
+					return s
+				}
+			}
+		}
+	}
+	if h, err := el.Element("h1,h2,h3,h4,h5,h6"); err == nil {
+		if txt, err := h.Text(); err == nil {
+			if s := strings.TrimSpace(txt); s != "" {
+				return s
+			}
+		}
+	}
+	if txt, err := el.Text(); err == nil {
+		txt = strings.TrimSpace(txt)
+		if i := strings.IndexAny(txt, "\n\r"); i > 0 {
+			txt = txt[:i]
+		}
+		return strings.TrimSpace(txt)
+	}
+	return ""
+}
+
+// linkValue 从链接元素解析详情 URL：读 link_attr（默认 href）属性，
+// 可选 link_extract_regex 抽取、link_url_template 拼接
+func (t *spiderTask) linkValue(el *rod.Element) string {
+	attr := t.LinkAttr
+	if attr == "" {
+		attr = "href"
+	}
+	v := ""
+	if a, err := el.Attribute(attr); err == nil && a != nil {
+		v = strings.TrimSpace(*a)
+	}
+	if v == "" {
+		return ""
+	}
+	if t.LinkExtractRegex != "" {
+		re, err := compileLinkRegex(t.LinkExtractRegex)
+		if err != nil {
+			return ""
+		}
+		m := re.FindStringSubmatch(v)
+		if m == nil {
+			return ""
+		}
+		if len(m) > 1 {
+			v = m[1]
+		} else {
+			v = m[0]
+		}
+	}
+	return buildLinkURL(t.LinkURLTemplate, v)
+}
+
+// buildLinkURL 按 link_url_template 生成最终 URL：
+// 含 {value} 占位则替换为属性值，否则视为前缀直接拼接；模板为空原样返回
+func buildLinkURL(template, value string) string {
+	if template == "" {
+		return value
+	}
+	if strings.Contains(template, "{value}") {
+		return strings.ReplaceAll(template, "{value}", value)
+	}
+	return template + value
+}
+
+// compileLinkRegex 编译 link_extract_regex；兼容 /re/ 包裹写法（与 link_include 过滤约定一致）
+func compileLinkRegex(pattern string) (*regexp.Regexp, error) {
+	if len(pattern) > 2 && strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
+		pattern = pattern[1 : len(pattern)-1]
+	}
+	return regexp.Compile(pattern)
 }
 
 // extractLinksByClick 点击拦截模式：劫持 window.open（只记录不真开新窗），对 list_selector
@@ -396,6 +519,10 @@ func (h *HeadlessSpider) extractLinksByClick(page *rod.Page, t *spiderTask, base
 		const captured = [];
 		const origOpen = window.open;
 		window.open = function (u) { if (u) captured.push(String(u)); return null; };
+		// 捕获阶段取消默认行为：防止条目内的真实 <a href> 被 el.click() 触发页面导航，
+		// 导致后续 setTimeout 不执行、结果 Promise 悬挂（Vue 的 @click 监听不受 preventDefault 影响）
+		const stopNav = e => e.preventDefault();
+		document.addEventListener('click', stopNav, true);
 		const els = Array.from(document.querySelectorAll(listSel));
 		const titles = els.map(el => {
 			let n = titleSel ? el.querySelector(titleSel) : null;
@@ -411,6 +538,7 @@ func (h *HeadlessSpider) extractLinksByClick(page *rod.Page, t *spiderTask, base
 		});
 		return new Promise(resolve => setTimeout(() => {
 			window.open = origOpen;
+			document.removeEventListener('click', stopNav, true);
 			resolve(JSON.stringify({ urls: captured, titles: titles }));
 		}, 800));
 	}`
