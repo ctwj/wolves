@@ -604,6 +604,11 @@ func (h *HeadlessSpider) launchBrowser() (*rod.Browser, error) {
 		Headless(h.Headless).
 		Set("disable-blink-features", "AutomationControlled").
 		Set("disable-infobars")
+	// root 下 Chrome 拒绝启动（Running as root without --no-sandbox is not supported），
+	// 服务器常以 root 部署，这里自动关沙箱而不是让用户改运行用户
+	if os.Getuid() == 0 {
+		l = l.NoSandbox(true)
+	}
 	if h.BrowserPath != "" {
 		l = l.Bin(h.BrowserPath)
 	}
