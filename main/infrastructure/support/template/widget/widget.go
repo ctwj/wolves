@@ -260,9 +260,8 @@ func (w *Widget) CategoryPageList(categoryID, pageNumber int) (res PageListResul
 		ctx.Where = &context.Where{Field: "status", Operator: context.WhereOperatorEqualTrue}
 		list, err := service.Article.ListByCategoryIdsWithDetail(ctx, categoryIds)
 		log.ErrorShortcut("template widget error", err)
-		if len(list) == 0 {
-			return nil, 0
-		}
+		// 空列表也要返回类型化的切片（而非 nil）：模板里 len(list) 对 untyped nil 会触发
+		// reflect: call of reflect.Value.Type on zero Value 导致整页 500
 		return list, len(list)
 	}
 	// 统计总数函数

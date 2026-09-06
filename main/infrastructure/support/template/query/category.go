@@ -44,6 +44,9 @@ func (c *Category) context() *context.Context {
 
 // Get by id
 func (c *Category) Get(id int) *entity.Category {
+	if id <= 0 { // 模板常用 Get(0) 探测顶级分类的父级，静默返回避免每次渲染刷 "id is required" 告警
+		return nil
+	}
 	res, err := service.Category.Get(id)
 	log.WarnShortcut("template query error", err)
 	return res
