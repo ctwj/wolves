@@ -35,7 +35,7 @@
         <span class="text-sm text-gray-400 ml-3">秒</span>
         <template #extra>
           <a-typography-text type="secondary" class="text-xs">
-            单个页面的加载超时时间，默认 30 秒；目标站较慢可适当调大。
+            整页总预算（默认 30）：导航 + 渲染等待 + 滚动 + 取链共享，任一阶段用完即超时；慢站/广告多的站建议 60~90。
           </a-typography-text>
         </template>
       </a-form-item>
@@ -46,6 +46,42 @@
         <template #extra>
           <a-typography-text type="secondary" class="text-xs">
             每篇文章采集完成后的等待间隔，默认 3 秒，避免请求过快触发封禁。
+          </a-typography-text>
+        </template>
+      </a-form-item>
+
+      <a-divider orientation="left" :margin="8">调试与限额</a-divider>
+      <div class="grid grid-cols-2 gap-x-4">
+        <a-form-item label="失败重试">
+          <a-input-number v-model="data.retry" class="input" :min="0" :max="10" />
+          <template #extra>
+            <a-typography-text type="secondary" class="text-xs">
+              详情页采集失败后的重试次数，默认 0。
+            </a-typography-text>
+          </template>
+        </a-form-item>
+        <a-form-item label="采集限量">
+          <a-input-number v-model="data.limit" class="input" :min="0" :max="100000" />
+          <template #extra>
+            <a-typography-text type="secondary" class="text-xs">
+              每任务最多入库篇数，0=不限；调试时配 1~5 小样跑。
+            </a-typography-text>
+          </template>
+        </a-form-item>
+      </div>
+      <a-form-item label="试运行">
+        <a-switch v-model="data.dry_run" />
+        <template #extra>
+          <a-typography-text type="secondary" class="text-xs">
+            只解析与打日志、不入库，调试选择器用。
+          </a-typography-text>
+        </template>
+      </a-form-item>
+      <a-form-item label="调试目录">
+        <a-input v-model="data.debug_dir" placeholder="如 /tmp/spider_debug，留空关闭" allow-clear />
+        <template #extra>
+          <a-typography-text type="secondary" class="text-xs">
+            列表页/详情页失败时保存页面截图（页面超时后也能拍到最后画面），排查选择器必备。
           </a-typography-text>
         </template>
       </a-form-item>
@@ -148,7 +184,7 @@
             <a-input v-model="t.wait_selector" placeholder="如 .video-list，留空等 DOM 稳定" allow-clear />
             <template #extra>
               <a-typography-text type="secondary" class="text-xs">
-                JS 渲染站点填写：该元素出现才算页面就绪，同时作用于详情页。
+                JS 渲染站点填写：该元素出现才算页面就绪，同时作用于详情页。正文为 JS 延迟填充的站可填「正文选择器:not(:empty)」（如 article.read-content:not(:empty)），等到正文有内容才算就绪。
               </a-typography-text>
             </template>
           </a-form-item>
@@ -175,6 +211,11 @@
           </a-form-item>
           <a-form-item label="正文选择器">
             <a-input v-model="t.content_sel" placeholder="正文容器选择器，取 innerHTML" allow-clear />
+            <template #extra>
+              <a-typography-text type="secondary" class="text-xs">
+                正文容器选择器（取 innerHTML）。命中后日志会记录正文长度与前 150 字预览；容器先渲染、正文 JS 后填充的站点，把渲染等待元素配成「本选择器:not(:empty)」。
+              </a-typography-text>
+            </template>
           </a-form-item>
           <a-form-item label="播放源选择器">
             <a-input v-model="t.video_src_sel" placeholder="如 .player video, .player iframe" allow-clear />

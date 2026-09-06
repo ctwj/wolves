@@ -1,9 +1,11 @@
 package plugins
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -32,7 +34,7 @@ type HeadlessSpider struct {
 	BrowserPath string `json:"browser_path"` // 浏览器路径（Chrome/Edge；留空自动查找，查找失败时必填）
 	Proxy       string `json:"proxy"`        // 浏览器代理（如 http://127.0.0.1:7890），留空不用
 	Headless    bool   `json:"headless"`     // 无头模式（调试时可关）
-	Timeout     int    `json:"timeout"`      // 单页加载超时秒数（默认 30）
+	Timeout     int    `json:"timeout"`      // 整页总预算秒数：导航+渲染等待+滚动+取链共享（默认 30，慢站调大）
 	Interval    int    `json:"interval"`     // 页面间隔秒数（默认 3，全局）
 	Tasks       string `json:"tasks"`        // 任务数组 JSON（见 About），多站多分类在此配置
 
@@ -156,7 +158,8 @@ func (h *HeadlessSpider) Info() *pluginEntity.PluginInfo {
 			"mode=list 直接从列表出文章（list_cover_sel/list_desc_sel）；正文翻页 content_next_sel+content_max_pages；" +
 			"keywords_sel/publish_time_sel 提取关键词与发布时间（回退 meta）；" +
 			"视频源 video_src_sel（直链 embed=false）+ video_iframe_sel（iframe 嵌入 embed=true）+ 懒加载 video_attr/video_iframe_attr/gallery_attr + 集名 video_label_sel；" +
-			"登录态 user_agent/cookies；全局 retry 重试 / limit 限量 / dry_run 试运行 / debug_dir 失败截图 / dedup_by=url 按 URL 去重",
+			"登录态 user_agent/cookies；全局 retry 重试 / limit 限量 / dry_run 试运行 / debug_dir 失败截图 / dedup_by=url 按 URL 去重。" +
+			"timeout 为整页总预算（导航+渲染等待+滚动+取链共享，慢站调大）；browser 为本机 Chrome/Edge/Chromium 优先，找不到才下载精简版 Chromium",
 		RunEnable:  true,
 		CronEnable: true,
 		PluginInfoPersistent: pluginEntity.PluginInfoPersistent{
@@ -203,9 +206,10 @@ func (h *HeadlessSpider) Run(ctx *pluginEntity.Plugin) error {
 
 	browser, err := h.launchBrowser()
 	if err != nil {
-		return fmt.Errorf("启动浏览器失败（本机需有 Chrome/Edge，或配置 browser_path）: %w", err)
+		return fmt.Errorf("启动浏览器失败（优先用本机 Chrome/Edge/Chromium，找不到则自动下载精简版 Chromium；可用 browser_path 指定）%s: %w",
+			browserLaunchHint(err), err)
 	}
-	defer browser.MustClose()
+	defer func() { _ = browser.Close() }()
 
 	h.ctx.Log.Info("开始无头采集", zap.Int("tasks", enabled),
 		zap.Bool("dry_run", h.DryRun), zap.Int("limit", h.Limit))
@@ -234,6 +238,22 @@ func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {
 	}
 	for i := range tasks {
 		t := &tasks[i]
+		// 配置去首尾空白：后台手填选择器/URL 易带空格（如 "article.read-content "），
+		// 带空格的选择器行为异常且难排查
+		for _, p := range []*string{
+			&t.Name, &t.SourceURL, &t.PageURLPattern, &t.WaitSelector, &t.ListSelector,
+			&t.ListTitleSel, &t.ListCoverSel, &t.ListCoverAttr, &t.ListDescSel,
+			&t.NextPageSel, &t.LinkSelector, &t.LinkAttr, &t.LinkExtractRegex, &t.LinkURLTemplate,
+			&t.TitleSel, &t.CoverSel, &t.ContentSel, &t.KeywordsSel, &t.ContentNextSel, &t.PublishTimeSel,
+			&t.VideoSrcSel, &t.VideoAttr, &t.VideoIframeSel, &t.VideoIframeAttr,
+			&t.VideoLabelSel, &t.VideoLabelAttr, &t.GallerySel, &t.GalleryAttr,
+		} {
+			*p = strings.TrimSpace(*p)
+		}
+		for j := range t.Extra {
+			t.Extra[j].Key = strings.TrimSpace(t.Extra[j].Key)
+			t.Extra[j].Selector = strings.TrimSpace(t.Extra[j].Selector)
+		}
 		if t.MaxPages <= 0 {
 			if t.NextPageSel != "" {
 				t.MaxPages = 50 // 按钮翻页模式不填则给安全上限
@@ -283,7 +303,8 @@ func (h *HeadlessSpider) runTask(browser *rod.Browser, t *spiderTask) (collected
 		h.eachListPage(browser, t, st, func(page *rod.Page, base *url.URL, title string) bool {
 			articles := h.extractListArticles(page, t, base)
 			h.ctx.Log.Info("列表页渲染完成", zap.String("task", t.Name),
-				zap.String("page_title", title), zap.Int("articles", len(articles)))
+				zap.String("page_title", title), zap.Int("articles", len(articles)),
+				zap.Duration("budget_left", budgetLeft(page)))
 			if len(articles) == 0 {
 				h.ctx.Log.Warn("未提取到列表文章——请核对 list_selector/list_title_sel/link_include 配置")
 				return false
@@ -303,11 +324,14 @@ func (h *HeadlessSpider) runTask(browser *rod.Browser, t *spiderTask) (collected
 		links, lerr := h.linksOnPage(page, t, base)
 		if lerr != nil {
 			st.failed++
-			h.ctx.Log.Error("列表页取链失败", zap.String("task", t.Name), zap.Error(lerr))
+			h.saveDebugShot(page, t, "list_error")
+			h.ctx.Log.Error("列表页取链失败", zap.String("task", t.Name),
+				zap.String("url", baseURLString(base)), zap.Error(lerr))
 			return true // 页级失败，继续尝试下一页
 		}
 		h.ctx.Log.Info("列表页渲染完成", zap.String("task", t.Name),
-			zap.String("page_title", title), zap.Int("links", len(links)))
+			zap.String("page_title", title), zap.Int("links", len(links)),
+			zap.Duration("budget_left", budgetLeft(page)))
 		if len(links) == 0 {
 			h.ctx.Log.Warn("未提取到链接——请核对 list_selector/wait_selector/link_include 配置")
 			return false
@@ -427,17 +451,19 @@ func (h *HeadlessSpider) eachListPage(browser *rod.Browser, t *spiderTask, st *t
 			h.ctx.Log.Error("创建页面失败", zap.String("task", t.Name), zap.Error(err))
 			return
 		}
-		defer page.MustClose()
+		defer closePage(page)
 		if err := h.openPage(page, t, h.pageURL(t, 1)); err != nil {
 			st.failed++
 			h.saveDebugShot(page, t, "list_error")
-			h.ctx.Log.Error("列表页打开失败", zap.String("task", t.Name), zap.Error(err))
+			h.ctx.Log.Error("列表页打开失败", zap.String("task", t.Name),
+				zap.String("url", h.pageURL(t, 1)), zap.Error(err))
 			return
 		}
 		for i := 1; i <= t.MaxPages; i++ {
-			h.ctx.Log.Info("采集列表页", zap.String("task", t.Name), zap.Int("page", i))
-			h.scrollPage(page, t.ScrollTimes)
 			base, title := pageInfo(page, "")
+			h.ctx.Log.Info("采集列表页", zap.String("task", t.Name),
+				zap.Int("page", i), zap.String("url", baseURLString(base)))
+			h.scrollPage(page, t.ScrollTimes)
 			if !visit(page, base, title) {
 				return
 			}
@@ -460,31 +486,57 @@ func (h *HeadlessSpider) eachListPage(browser *rod.Browser, t *spiderTask, st *t
 			st.failed++
 			h.saveDebugShot(page, t, "list_error")
 			h.ctx.Log.Error("列表页采集失败", zap.String("url", pageURL), zap.Error(err))
-			page.MustClose()
+			closePage(page)
 			continue
 		}
 		h.scrollPage(page, t.ScrollTimes)
 		base, title := pageInfo(page, pageURL)
 		visit(page, base, title)
-		page.MustClose()
+		closePage(page)
 	}
 }
 
-// openPage 导航并等待渲染就绪（wait_selector 或 DOM 稳定）
+// openPage 导航并等待渲染就绪（wait_selector 或 DOM 稳定）。
+// 各阶段分别计时，失败错误带页面地址与该阶段已耗时，成功打一条耗时摘要（含剩余预算），
+// 用于定位整页预算（timeout）被哪个阶段吃掉
 func (h *HeadlessSpider) openPage(page *rod.Page, t *spiderTask, pageURL string) error {
+	navStart := time.Now()
 	if err := page.Navigate(pageURL); err != nil {
-		return err
+		return fmt.Errorf("导航 %s 失败（耗时 %s）: %w", pageURL, time.Since(navStart).Round(time.Millisecond), err)
 	}
+	navCost := time.Since(navStart)
+
+	loadStart := time.Now()
 	if err := page.WaitLoad(); err != nil {
-		return err
+		return fmt.Errorf("页面 %s 加载超时（WaitLoad，已等 %s）: %w", pageURL, time.Since(loadStart).Round(time.Millisecond), err)
 	}
+	loadCost := time.Since(loadStart)
+
+	readyStart := time.Now()
 	if t.WaitSelector != "" {
 		if _, err := page.Element(t.WaitSelector); err != nil {
-			return fmt.Errorf("等待元素 %s 超时（渲染判据未出现）: %w", t.WaitSelector, err)
+			return fmt.Errorf("页面 %s 等待元素 %s 超时（渲染判据未出现，已等 %s）: %w",
+				pageURL, t.WaitSelector, time.Since(readyStart).Round(time.Millisecond), err)
 		}
-	} else if err := page.WaitStable(time.Second * 2); err != nil {
-		return err
+	} else {
+		// 广告轮播/倒计时等会让 DOM 永不稳定，WaitStable 无上限会吃光整页预算
+		// （实测 wait_ready 可达 26s+），故封顶 10s 尽力而为，等不到就继续；
+		// 需要精确渲染判据的任务请配 wait_selector
+		const stableMax = 10 * time.Second
+		_ = page.Timeout(stableMax).WaitStable(time.Second * 2)
+		if time.Since(readyStart) >= stableMax-time.Second {
+			h.ctx.Log.Warn("DOM 长时间不稳定（广告/持续渲染页面常见），达稳定等待上限后继续",
+				zap.String("url", pageURL), zap.Duration("waited", stableMax),
+				zap.Duration("budget_left", budgetLeft(page)),
+				zap.String("hint", "可配置 wait_selector 明确渲染判据"))
+		}
 	}
+
+	h.ctx.Log.Info("页面打开耗时", zap.String("url", pageURL),
+		zap.Duration("navigate", navCost.Round(time.Millisecond)),
+		zap.Duration("wait_load", loadCost.Round(time.Millisecond)),
+		zap.Duration("wait_ready", time.Since(readyStart).Round(time.Millisecond)),
+		zap.Duration("budget_left", budgetLeft(page)))
 	return nil
 }
 
@@ -505,14 +557,111 @@ func pageInfo(page *rod.Page, fallbackURL string) (base *url.URL, title string) 
 	return base, title
 }
 
-// scrollPage 滚动到页底触发懒加载/“加载更多”（每次间隔约 1s）
+// scrollPage 滚动到页底触发懒加载/“加载更多”（每次间隔约 1s）；
+// 完成后打耗时与剩余预算，页面预算耗尽时提示地址
 func (h *HeadlessSpider) scrollPage(page *rod.Page, times int) {
+	if times <= 0 {
+		return
+	}
+	start := time.Now()
 	for i := 0; i < times; i++ {
 		if _, err := page.Eval(`window.scrollTo(0, document.body.scrollHeight)`); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				h.ctx.Log.Warn("滚动阶段页面已超时（整页预算耗尽）",
+					zap.String("url", h.pageAddress(page)), zap.Error(err))
+			}
 			return
 		}
 		time.Sleep(time.Second)
 	}
+	h.ctx.Log.Info("滚动完成", zap.Int("times", times),
+		zap.Duration("cost", time.Since(start).Round(time.Millisecond)),
+		zap.Duration("budget_left", budgetLeft(page)),
+		zap.String("url", h.pageAddress(page)))
+}
+
+// pageAddress 取页面当前地址（页面超时后 ctx 已过期，须换无超时上下文查询；失败返回空串）
+func (h *HeadlessSpider) pageAddress(page *rod.Page) string {
+	if info, err := page.Context(context.Background()).Info(); err == nil && info != nil {
+		return info.URL
+	}
+	return ""
+}
+
+// budgetLeft 整页总预算剩余时长（页面 ctx 未挂 deadline 时返回 -1）
+func budgetLeft(page *rod.Page) time.Duration {
+	if dl, ok := page.GetContext().Deadline(); ok {
+		return time.Until(dl)
+	}
+	return -1
+}
+
+// fieldWait 单个字段选择器的等待上限：rod 的 Page.Element 未命中会重试到整页预算耗尽，
+// 一个错误选择器会拖死后续所有字段提取，这里封顶
+const fieldWait = 10 * time.Second
+
+// metaWait meta 标签回退选择的等待上限：meta 要么加载即在、要么不存在，不值得久等
+const metaWait = 2 * time.Second
+
+// fieldElement 字段提取用：maxWait 上限内等选择器命中，未命中记入 missed
+// （fetchArticle 结束时随“详情页提取完成”汇总输出，便于核对选择器配置）
+func (h *HeadlessSpider) fieldElement(page *rod.Page, missed *[]string, field, sel string, maxWait time.Duration) *rod.Element {
+	start := time.Now()
+	el, err := page.Timeout(maxWait).Element(sel)
+	if err == nil {
+		return el
+	}
+	*missed = append(*missed, field)
+	h.ctx.Log.Debug("字段选择器未命中", zap.String("field", field), zap.String("selector", sel),
+		zap.Duration("waited", time.Since(start).Round(time.Millisecond)),
+		zap.Error(err))
+	return nil
+}
+
+// contentElement 等正文“命中且有内容”：容器壳常随首屏先行渲染、正文由 JS 稍后填充，
+// 只等元素存在会立刻返回空壳（Chrome 人工查看时早已填充，故选择器“看着是对的”）。
+// fieldWait 内轮询重读；命中时打日志记录长度与纯文本预览，超时按 预算耗尽/未命中/命中但为空
+// 分别告警；命中但为空时附带匹配数，matches>1 提示首个匹配可能是空壳/广告位
+func (h *HeadlessSpider) contentElement(page *rod.Page, t *spiderTask, missed *[]string) string {
+	if left := budgetLeft(page); left <= 0 {
+		*missed = append(*missed, "content_sel(预算耗尽)")
+		h.ctx.Log.Warn("正文提取跳过：页面预算已耗尽（前面阶段用完了 timeout，正文根本没被查询）",
+			zap.String("url", h.pageAddress(page)), zap.Duration("budget_left", left),
+			zap.String("hint", "看同页“页面打开耗时/字段选择器未命中”日志定位耗预算的阶段，调大 timeout 或修正选择器"))
+		return ""
+	}
+	start := time.Now()
+	found := false
+	for time.Since(start) < fieldWait {
+		if el, err := page.Timeout(3 * time.Second).Element(t.ContentSel); err == nil {
+			found = true
+			if html := strings.TrimSpace(el.MustHTML()); html != "" {
+				h.ctx.Log.Info("正文命中", zap.String("selector", t.ContentSel),
+					zap.Int("len", len(html)),
+					zap.Duration("waited", time.Since(start).Round(time.Millisecond)),
+					zap.String("preview", plainSummary(html, 20)))
+				return html
+			}
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if !found {
+		*missed = append(*missed, "content_sel")
+		h.ctx.Log.Warn("content_sel 未命中", zap.String("selector", t.ContentSel),
+			zap.String("url", h.pageAddress(page)),
+			zap.Duration("waited", time.Since(start).Round(time.Millisecond)),
+			zap.Duration("budget_left", budgetLeft(page)))
+		return ""
+	}
+	matches := -1
+	if els, err := page.Context(context.Background()).Elements(t.ContentSel); err == nil {
+		matches = len(els)
+	}
+	h.ctx.Log.Warn("正文容器命中但内容为空", zap.String("selector", t.ContentSel),
+		zap.String("url", h.pageAddress(page)), zap.Int("matches", matches),
+		zap.Duration("waited", fieldWait),
+		zap.String("hint", "matches>1：首个匹配可能是空壳/广告位，用更精确选择器；matches=1：正文为 JS 延迟填充或需翻页，可试 wait_selector/content_next_sel"))
+	return ""
 }
 
 // gotoListNext 列表页翻到下一页（next_page_sel）：a[href] 直接导航，无 href 则点击按钮。
@@ -520,6 +669,11 @@ func (h *HeadlessSpider) scrollPage(page *rod.Page, times int) {
 func (h *HeadlessSpider) gotoListNext(page *rod.Page, t *spiderTask, base *url.URL) bool {
 	el, err := page.Element(t.NextPageSel)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			// 预算耗尽与“翻到底了”在 Element 这里不可分，提示地址便于甄别
+			h.ctx.Log.Warn("查找下一页元素超时（整页预算耗尽，与翻到底不可分）",
+				zap.String("url", baseURLString(base)), zap.Error(err))
+		}
 		return false // 没有下一页了
 	}
 	hrefAttr := ""
@@ -570,7 +724,8 @@ func (h *HeadlessSpider) linksOnPage(page *rod.Page, t *spiderTask, base *url.UR
 		return nil, cerr
 	}
 	if cerr != nil {
-		h.ctx.Log.Warn("click 拦截失败，仅使用属性提取结果", zap.Error(cerr))
+		h.ctx.Log.Warn("click 拦截失败，仅使用属性提取结果",
+			zap.String("url", baseURLString(base)), zap.Error(cerr))
 	}
 	if herr != nil {
 		h.ctx.Log.Debug("属性提取通道失败", zap.Error(herr))
@@ -597,7 +752,7 @@ const stealthJS = `
 	window.chrome = window.chrome || { runtime: {} };
 `
 
-// launchBrowser 启动浏览器：优先本机 Chrome/Edge，可显式指定路径/代理。
+// launchBrowser 启动浏览器：优先本机 Chrome/Edge/Chromium，其次自动下载精简版 Chromium，可显式指定路径/代理。
 // 目标站的 debugger 断点陷阱依赖 DevTools 附加，无头采集不附加 Debugger 域即天然免疫。
 func (h *HeadlessSpider) launchBrowser() (*rod.Browser, error) {
 	l := launcher.New().
@@ -611,6 +766,10 @@ func (h *HeadlessSpider) launchBrowser() (*rod.Browser, error) {
 	}
 	if h.BrowserPath != "" {
 		l = l.Bin(h.BrowserPath)
+	} else if bin, ok := launcher.LookPath(); ok {
+		// rod 默认只认自动下载的精简版 Chromium，不会用系统已装的浏览器；
+		// 精简版在最小化安装的服务器上常缺 X/GTK 共享库（libatk 等），优先用本机的
+		l = l.Bin(bin)
 	}
 	if h.Proxy != "" {
 		l = l.Proxy(h.Proxy)
@@ -624,6 +783,18 @@ func (h *HeadlessSpider) launchBrowser() (*rod.Browser, error) {
 		return nil, err
 	}
 	return browser, nil
+}
+
+// browserLaunchHint 启动失败的补充提示：自动下载的精简版 Chromium 在最小化安装的 Linux 上
+// 常缺 X/GTK 共享库（libatk 只是第一个报缺的），给出对应安装命令，避免只对着 rod 文档链接排查
+func browserLaunchHint(err error) string {
+	if !strings.Contains(err.Error(), "loading shared libraries") {
+		return ""
+	}
+	return "：Chromium 缺系统共享库。" +
+		"Debian/Ubuntu: apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0；" +
+		"CentOS/RHEL: yum install -y nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon libXcomposite libXdamage libXfixes libXrandr mesa-libgbm pango cairo alsa-lib。" +
+		"或直接安装完整版 Chrome（装好后会被自动发现，无需配 browser_path）"
 }
 
 // newPage 创建未导航页面，注入隐身脚本（须在 Navigate 之前注册）、按任务应用 UA/cookies 并挂超时
@@ -648,6 +819,23 @@ func (h *HeadlessSpider) newPage(browser *rod.Browser, t *spiderTask) (*rod.Page
 	return page.Timeout(time.Duration(h.Timeout) * time.Second), nil
 }
 
+// closePage 关闭页面并忽略错误。page 挂的整页总预算超时后其上下文已过期，
+// 此时 Page.Close 会复用过期 ctx 必定失败（MustClose 即 panic），故换无超时上下文关闭
+func closePage(page *rod.Page) {
+	if page == nil {
+		return
+	}
+	_ = page.Context(context.Background()).Close()
+}
+
+// baseURLString nil 安全地取当前页面地址（超时日志用）
+func baseURLString(base *url.URL) string {
+	if base == nil {
+		return ""
+	}
+	return base.String()
+}
+
 func (h *HeadlessSpider) pageURL(t *spiderTask, page int) string {
 	if page <= 1 || t.PageURLPattern == "" {
 		return t.SourceURL
@@ -662,7 +850,10 @@ func (h *HeadlessSpider) pageURL(t *spiderTask, page int) string {
 func (h *HeadlessSpider) extractLinksByHref(page *rod.Page, t *spiderTask, base *url.URL) ([]spiderLink, error) {
 	els, err := page.Elements(t.ListSelector)
 	if err != nil {
-		return nil, fmt.Errorf("list_selector 无匹配: %w", err)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("页面 %s 取链超时：timeout 是整页总预算（导航+渲染等待+滚动+取链共享），轮到取链时已耗尽，请调大 timeout 或配置 wait_selector: %w", baseURLString(base), err)
+		}
+		return nil, fmt.Errorf("list_selector 查询失败（页面 %s）: %w", baseURLString(base), err)
 	}
 	var links []spiderLink
 	seen := map[string]struct{}{}
@@ -892,7 +1083,14 @@ func (h *HeadlessSpider) extractLinksByClick(page *rod.Page, t *spiderTask, base
 func (h *HeadlessSpider) extractListArticles(page *rod.Page, t *spiderTask, base *url.URL) []*entity.Article {
 	els, err := page.Elements(t.ListSelector)
 	if err != nil {
-		h.ctx.Log.Warn("list_selector 无匹配", zap.String("task", t.Name), zap.Error(err))
+		if errors.Is(err, context.DeadlineExceeded) {
+			h.ctx.Log.Warn("取链超时（timeout 总预算耗尽，请调大 timeout 或配置 wait_selector）",
+				zap.String("task", t.Name), zap.String("url", baseURLString(base)), zap.Error(err))
+		} else {
+			h.ctx.Log.Warn("list_selector 查询失败", zap.String("task", t.Name),
+				zap.String("url", baseURLString(base)), zap.Error(err))
+		}
+		h.saveDebugShot(page, t, "list_error")
 		return nil
 	}
 	var articles []*entity.Article
@@ -998,24 +1196,31 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 		if err != nil {
 			h.saveDebugShot(page, t, "detail_error")
 		}
-		page.MustClose()
+		closePage(page)
 	}()
+	navStart := time.Now()
 	if err := page.Navigate(link); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("导航 %s 失败（耗时 %s）: %w", link, time.Since(navStart).Round(time.Millisecond), err)
 	}
+	loadStart := time.Now()
 	if err := page.WaitLoad(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("详情页 %s 加载超时（WaitLoad，已等 %s）: %w", link, time.Since(loadStart).Round(time.Millisecond), err)
 	}
 	if t.WaitSelector != "" {
-		_, _ = page.Element(t.WaitSelector) // 详情页尽力等待，超时不致命
+		// 封顶等待：选择器配错时不让它吃光整页预算（超时不致命）。
+		// 建议配“有内容”判据（如 article.read-content:not(:empty)），
+		// 只等元素出现对 JS 后填充正文的站点不够
+		_, _ = page.Timeout(fieldWait).Element(t.WaitSelector)
 	} else {
-		_ = page.WaitStable(time.Second * 2)
+		// 同 openPage：广告页 DOM 永不稳定会耗干整页预算，封顶 10s 尽力而为
+		_ = page.Timeout(fieldWait).WaitStable(time.Second * 2)
 	}
+	var missed []string // 未命中的字段选择器（提取结束时汇总输出）
 
 	// 标题：选择器或回退 <title>
 	title := ""
 	if t.TitleSel != "" {
-		if el, e := page.Element(t.TitleSel); e == nil {
+		if el := h.fieldElement(page, &missed, "title_sel", t.TitleSel, fieldWait); el != nil {
 			title = strings.TrimSpace(el.MustText())
 		}
 	}
@@ -1039,17 +1244,23 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 		return nil, nil
 	}
 
+	// 正文最先提取（最关键字段先用预算；此前放在最后，前面的字段选择器等超时会把它饿死）
+	contentHTML := ""
+	if t.ContentSel != "" {
+		contentHTML = h.contentElement(page, t, &missed)
+	}
+
 	// 发布时间：publish_time_sel 优先（兼容 content 属性与文本），
 	// 回退 meta[property=article:published_time]；解析失败用采集时刻
 	createAt := time.Now().Unix()
 	publishRaw := ""
 	if t.PublishTimeSel != "" {
-		if el, e := page.Element(t.PublishTimeSel); e == nil {
+		if el := h.fieldElement(page, &missed, "publish_time_sel", t.PublishTimeSel, fieldWait); el != nil {
 			publishRaw = elementValueAuto(el)
 		}
 	}
 	if publishRaw == "" {
-		if el, e := page.Element(`meta[property="article:published_time"]`); e == nil {
+		if el := h.fieldElement(page, &missed, "published_time_meta", `meta[property="article:published_time"]`, metaWait); el != nil {
 			if c, e2 := el.Attribute("content"); e2 == nil && c != nil {
 				publishRaw = strings.TrimSpace(*c)
 			}
@@ -1073,12 +1284,12 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 	// 关键词：keywords_sel 优先，回退 meta[name=keywords]
 	keywords := ""
 	if t.KeywordsSel != "" {
-		if el, e := page.Element(t.KeywordsSel); e == nil {
+		if el := h.fieldElement(page, &missed, "keywords_sel", t.KeywordsSel, fieldWait); el != nil {
 			keywords = elementValueAuto(el)
 		}
 	}
 	if keywords == "" {
-		if el, e := page.Element(`meta[name="keywords"]`); e == nil {
+		if el := h.fieldElement(page, &missed, "keywords_meta", `meta[name="keywords"]`, metaWait); el != nil {
 			if c, e2 := el.Attribute("content"); e2 == nil && c != nil {
 				keywords = strings.TrimSpace(*c)
 			}
@@ -1088,27 +1299,20 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 
 	// 封面：优先选择器元素 src，回退 og:image meta content
 	if t.CoverSel != "" {
-		if el, e := page.Element(t.CoverSel); e == nil {
+		if el := h.fieldElement(page, &missed, "cover_sel", t.CoverSel, fieldWait); el != nil {
 			if src, e2 := el.Attribute("src"); e2 == nil && src != nil {
 				item.Thumbnail = *src
 			}
 		}
 	}
 	if item.Thumbnail == "" {
-		if el, e := page.Element(`meta[property="og:image"]`); e == nil {
+		if el := h.fieldElement(page, &missed, "og_image_meta", `meta[property="og:image"]`, metaWait); el != nil {
 			if content, e2 := el.Attribute("content"); e2 == nil && content != nil {
 				item.Thumbnail = *content
 			}
 		}
 	}
 
-	// 正文
-	contentHTML := ""
-	if t.ContentSel != "" {
-		if el, e := page.Element(t.ContentSel); e == nil {
-			contentHTML = el.MustHTML()
-		}
-	}
 	// 正文翻页：存在“下一页”时逐页拼接（内容无新增即停，防“下一页”永在的死循环站）
 	if t.ContentSel != "" && t.ContentNextSel != "" {
 		maxPages := t.ContentMaxPages
@@ -1120,7 +1324,7 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 				break
 			}
 			chunk := ""
-			if el, e := page.Element(t.ContentSel); e == nil {
+			if el := h.fieldElement(page, &missed, "content_sel_翻页", t.ContentSel, fieldWait); el != nil {
 				chunk = el.MustHTML()
 			}
 			if chunk == "" || strings.HasSuffix(contentHTML, chunk) {
@@ -1173,14 +1377,33 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 			if vals, e := h.extractAttrList(page, ex.Selector, ex.Attr); e == nil && len(vals) > 0 {
 				extends = append(extends, vo.ExtendsItem{Key: ex.Key, Value: vals})
 			}
-		} else if el, e := page.Element(ex.Selector); e == nil {
+		} else if el := h.fieldElement(page, &missed, "extra:"+ex.Key, ex.Selector, fieldWait); el != nil {
 			if v := elementValue(el, ex.Attr); v != "" {
 				extends = append(extends, vo.ExtendsItem{Key: ex.Key, Value: v})
 			}
 		}
 	}
 	item.Extends = extends
+	h.ctx.Log.Info("详情页提取完成", zap.String("url", link),
+		zap.String("title", truncateRunes(title, 40)),
+		zap.Int("content_len", len(contentHTML)),
+		zap.Int("keywords_len", len(item.Keywords)),
+		zap.Bool("cover", item.Thumbnail != ""),
+		zap.Int("extends", len(extends)),
+		zap.Strings("missed", missed),
+		zap.Duration("cost", time.Since(navStart).Round(time.Millisecond)),
+		zap.Duration("budget_left", budgetLeft(page)))
 	return item, nil
+}
+
+// containsStr 小工具：判断切片是否含指定字符串
+func containsStr(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // gotoDetailNext 详情页正文翻到下一页（content_next_sel）：a[href] 直接导航，无 href 则点击。
@@ -1398,12 +1621,13 @@ func parseCookies(raw, pageURL string) ([]*proto.NetworkCookieParam, error) {
 	return out, nil
 }
 
-// saveDebugShot 调试目录非空时保存当前页面截图（排查 selector/渲染问题的失败现场）
+// saveDebugShot 调试目录非空时保存当前页面截图（排查 selector/渲染问题的失败现场）。
+// 页面超时后其 ctx 已过期、直接截图必败，这里换无超时上下文拍最后一张现场
 func (h *HeadlessSpider) saveDebugShot(page *rod.Page, t *spiderTask, tag string) {
 	if h.DebugDir == "" || page == nil {
 		return
 	}
-	data, err := page.Screenshot(false, &proto.PageCaptureScreenshot{})
+	data, err := page.Context(context.Background()).Screenshot(false, &proto.PageCaptureScreenshot{})
 	if err != nil {
 		return
 	}
