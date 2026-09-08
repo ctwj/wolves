@@ -81,9 +81,15 @@
 </div>
 <script>
 (function () {
-    // 打开页面时把当前章滚入目录视野
+    // 打开页面时把当前章滚入目录视野（只滚章节列表容器内部，不滚动整页窗口）
+    var list = document.querySelector('.chapter-list');
     var cur = document.querySelector('.chapter-item.active');
-    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'center' });
+    if (list && cur) {
+        // 当前章中心对齐列表中心；用视口坐标差计算，不依赖 offsetParent 参照系
+        var lr = list.getBoundingClientRect();
+        var cr = cur.getBoundingClientRect();
+        list.scrollTop += (cr.top + cr.height / 2) - (lr.top + lr.height / 2);
+    }
 })();
 </script>
 {{ end }}
