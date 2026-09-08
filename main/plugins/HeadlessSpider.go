@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-rod/rod"
@@ -34,6 +35,7 @@ type HeadlessSpider struct {
 	BrowserPath string `json:"browser_path"` // 浏览器路径（Chrome/Edge；留空自动查找，查找失败时必填）
 	Proxy       string `json:"proxy"`        // 浏览器代理（如 http://127.0.0.1:7890），留空不用
 	Headless    bool   `json:"headless"`     // 无头模式（调试时可关）
+	MaxBrowsers int    `json:"max_browsers"` // 并发浏览器实例上限：任务按 source_url 域名分组，同域名共用一个浏览器，不同域名并行各起一个（默认 3）
 	Timeout     int    `json:"timeout"`      // 整页总预算秒数：导航+渲染等待+滚动+取链共享（默认 30，慢站调大）
 	Interval    int    `json:"interval"`     // 页面间隔秒数（默认 3，全局）
 	Tasks       string `json:"tasks"`        // 任务数组 JSON（见 About），多站多分类在此配置
@@ -159,7 +161,8 @@ func (h *HeadlessSpider) Info() *pluginEntity.PluginInfo {
 			"keywords_sel/publish_time_sel 提取关键词与发布时间（回退 meta）；" +
 			"视频源 video_src_sel（直链 embed=false）+ video_iframe_sel（iframe 嵌入 embed=true）+ 懒加载 video_attr/video_iframe_attr/gallery_attr + 集名 video_label_sel；" +
 			"登录态 user_agent/cookies；全局 retry 重试 / limit 限量 / dry_run 试运行 / debug_dir 失败截图 / dedup_by=url 按 URL 去重。" +
-			"timeout 为整页总预算（导航+渲染等待+滚动+取链共享，慢站调大）；browser 为本机 Chrome/Edge/Chromium 优先，找不到才下载精简版 Chromium",
+			"timeout 为整页总预算（导航+渲染等待+滚动+取链共享，慢站调大）；browser 为本机 Chrome/Edge/Chromium 优先，找不到才下载精简版 Chromium；" +
+			"多任务按 source_url 域名分组并行采集：同域名共用一个浏览器实例，不同域名各起一个（max_browsers 控制并发上限，默认 3）",
 		RunEnable:  true,
 		CronEnable: true,
 		PluginInfoPersistent: pluginEntity.PluginInfoPersistent{
@@ -189,42 +192,140 @@ func (h *HeadlessSpider) Run(ctx *pluginEntity.Plugin) error {
 	if h.Retry < 0 {
 		h.Retry = 0
 	}
+	if h.MaxBrowsers <= 0 {
+		h.MaxBrowsers = 3
+	}
 
 	tasks, err := h.parseTasks()
 	if err != nil {
 		return err
 	}
-	enabled := 0
-	for _, t := range tasks {
-		if t.Enable {
-			enabled++
-		}
-	}
-	if enabled == 0 {
+	groups := groupTasksByDomain(tasks)
+	if len(groups) == 0 {
 		return fmt.Errorf("tasks 中没有启用（enable=true）的任务")
 	}
+	taskTotal := 0
+	for _, g := range groups {
+		taskTotal += len(g.Tasks)
+	}
 
+	h.ctx.Log.Info("开始无头采集", zap.Int("tasks", taskTotal), zap.Int("domains", len(groups)),
+		zap.Int("max_browsers", min(h.MaxBrowsers, len(groups))),
+		zap.Bool("dry_run", h.DryRun), zap.Int("limit", h.Limit))
+	startTime := time.Now()
+
+	// 每个域名分组一个浏览器实例并行采集；分组数超过 max_browsers 时排队等空位。
+	// results 按分组下标写入，各 goroutine 只写自己的槽位，无锁
+	sem := make(chan struct{}, h.MaxBrowsers)
+	results := make([]domainResult, len(groups))
+	var wg sync.WaitGroup
+	for gi, g := range groups {
+		wg.Add(1)
+		go func(gi int, g domainGroup) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[gi] = h.runDomain(g)
+		}(gi, g)
+	}
+	wg.Wait()
+
+	var collected, skipped, failed, browserFails int
+	var lastBrowserErr error
+	for _, r := range results {
+		collected += r.Collected
+		skipped += r.Skipped
+		failed += r.Failed
+		if r.BrowserErr != nil {
+			browserFails++
+			lastBrowserErr = r.BrowserErr
+		}
+	}
+	h.ctx.Log.Info("全部任务结束", zap.Duration("cost", time.Since(startTime)),
+		zap.Int("collected", collected), zap.Int("skipped", skipped),
+		zap.Int("failed", failed), zap.Int("browser_fails", browserFails))
+
+	// 单个域名起浏览器失败只记日志不影响其他分组；全部失败才视为本次运行失败
+	if browserFails == len(results) && lastBrowserErr != nil {
+		return fmt.Errorf("所有域名分组启动浏览器失败（优先用本机 Chrome/Edge/Chromium，找不到则自动下载精简版 Chromium；可用 browser_path 指定）%s: %w",
+			browserLaunchHint(lastBrowserErr), lastBrowserErr)
+	}
+	return nil
+}
+
+// domainGroup 同域名（source_url 的 host，含端口）的一组启用任务
+type domainGroup struct {
+	Domain string
+	Tasks  []spiderTask
+}
+
+// domainResult 域名分组汇总；BrowserErr 非空表示浏览器启动失败、组内任务未执行
+type domainResult struct {
+	Domain                               string
+	Collected, Skipped, Failed, TasksRun int
+	BrowserErr                           error
+}
+
+// groupTasksByDomain 把启用任务按列表页 source_url 的域名分组：
+// 同域名任务共用一个浏览器实例（组内保持任务数组原顺序串行执行），
+// 不同域名各起一个浏览器并行。分组顺序取域名首次出现顺序，日志输出稳定
+func groupTasksByDomain(tasks []spiderTask) []domainGroup {
+	var groups []domainGroup
+	idx := map[string]int{}
+	for _, t := range tasks {
+		if !t.Enable {
+			continue
+		}
+		key := taskDomainKey(t.SourceURL)
+		if gi, ok := idx[key]; ok {
+			groups[gi].Tasks = append(groups[gi].Tasks, t)
+			continue
+		}
+		idx[key] = len(groups)
+		groups = append(groups, domainGroup{Domain: key, Tasks: []spiderTask{t}})
+	}
+	return groups
+}
+
+// taskDomainKey 域名分组键：URL 的 host（含端口——localhost:8080 与 localhost:3000
+// 视为不同站点；正式站点端口为空即纯域名，http/https 同域会归并），
+// 再去掉 www. 前缀（www 与裸域视为同一域名共用浏览器）。
+// 解析失败的 URL 按原始串各自独立分组
+func taskDomainKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return strings.TrimPrefix(u.Host, "www.")
+	}
+	return raw
+}
+
+// runDomain 单域名分组采集：起一个浏览器，组内任务按原顺序串行执行
+func (h *HeadlessSpider) runDomain(g domainGroup) domainResult {
+	res := domainResult{Domain: g.Domain}
 	browser, err := h.launchBrowser()
 	if err != nil {
-		return fmt.Errorf("启动浏览器失败（优先用本机 Chrome/Edge/Chromium，找不到则自动下载精简版 Chromium；可用 browser_path 指定）%s: %w",
-			browserLaunchHint(err), err)
+		res.BrowserErr = err
+		h.ctx.Log.Error("启动浏览器失败，该域名分组跳过（优先用本机 Chrome/Edge/Chromium，找不到则自动下载精简版 Chromium；可用 browser_path 指定）"+browserLaunchHint(err),
+			zap.String("domain", g.Domain), zap.Error(err))
+		return res
 	}
 	defer func() { _ = browser.Close() }()
 
-	h.ctx.Log.Info("开始无头采集", zap.Int("tasks", enabled),
-		zap.Bool("dry_run", h.DryRun), zap.Int("limit", h.Limit))
-	startTime := time.Now()
-	for i, task := range tasks {
-		if !task.Enable {
-			continue
-		}
-		h.ctx.Log.Info("执行任务", zap.Int("idx", i+1), zap.String("name", task.Name), zap.String("source", task.SourceURL))
+	h.ctx.Log.Info("域名分组开始", zap.String("domain", g.Domain), zap.Int("tasks", len(g.Tasks)))
+	for i, task := range g.Tasks {
+		h.ctx.Log.Info("执行任务", zap.String("domain", g.Domain), zap.Int("idx", i+1),
+			zap.String("name", task.Name), zap.String("source", task.SourceURL))
 		c, s, f := h.runTask(browser, &task)
+		res.Collected += c
+		res.Skipped += s
+		res.Failed += f
+		res.TasksRun++
 		h.ctx.Log.Info("任务完成", zap.String("name", task.Name),
 			zap.Int("collected", c), zap.Int("skipped", s), zap.Int("failed", f))
 	}
-	h.ctx.Log.Info("全部任务结束", zap.Duration("cost", time.Since(startTime)))
-	return nil
+	h.ctx.Log.Info("域名分组结束", zap.String("domain", g.Domain),
+		zap.Int("collected", res.Collected), zap.Int("skipped", res.Skipped), zap.Int("failed", res.Failed))
+	return res
 }
 
 func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {

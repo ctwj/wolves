@@ -184,3 +184,69 @@ func TestSameSite(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskDomainKey(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"https://www.example.tv/list", "example.tv"},    // www 前缀去掉
+		{"https://example.tv/list", "example.tv"},        // 裸域
+		{"http://www.example.tv/list", "example.tv"},     // http/https 同 host 归并
+		{" https://www.example.tv/list ", "example.tv"},  // 首尾空白
+		{"http://localhost:8080/list", "localhost:8080"}, // 端口参与分组
+		{"http://localhost:3000/list", "localhost:3000"}, // 不同端口不同分组
+		{"https://www.www.tv/list", "www.tv"},            // www.tv 本体不受影响
+		{"not a url", "not a url"},                       // 解析失败按原始串
+		{"", ""},                                         // 空串兜底
+	}
+	for _, c := range cases {
+		if got := taskDomainKey(c.raw); got != c.want {
+			t.Errorf("taskDomainKey(%q) = %q, want %q", c.raw, got, c.want)
+		}
+	}
+}
+
+func TestGroupTasksByDomain(t *testing.T) {
+	tasks := []spiderTask{
+		{Name: "a1", Enable: true, SourceURL: "https://a.tv/list"},
+		{Name: "off", Enable: false, SourceURL: "https://a.tv/list"}, // 禁用任务不参与分组
+		{Name: "b1", Enable: true, SourceURL: "https://www.b.tv/list"},
+		{Name: "a2", Enable: true, SourceURL: "http://www.a.tv/list2"}, // www/http 与裸域 https 同域名归并
+		{Name: "c1", Enable: true, SourceURL: "http://127.0.0.1:9000/list"},
+	}
+	groups := groupTasksByDomain(tasks)
+
+	want := []domainGroup{
+		{Domain: "a.tv", Tasks: []spiderTask{tasks[0], tasks[3]}},
+		{Domain: "b.tv", Tasks: []spiderTask{tasks[2]}},
+		{Domain: "127.0.0.1:9000", Tasks: []spiderTask{tasks[4]}},
+	}
+	if len(groups) != len(want) {
+		t.Fatalf("group count = %d, want %d: %+v", len(groups), len(want), groups)
+	}
+	for gi, g := range groups {
+		if g.Domain != want[gi].Domain {
+			t.Errorf("group[%d] domain = %q, want %q", gi, g.Domain, want[gi].Domain)
+		}
+		if len(g.Tasks) != len(want[gi].Tasks) {
+			t.Errorf("group[%d] %s task count = %d, want %d", gi, g.Domain, len(g.Tasks), len(want[gi].Tasks))
+			continue
+		}
+		for ti, task := range g.Tasks {
+			if task.Name != want[gi].Tasks[ti].Name {
+				t.Errorf("group[%d] %s task[%d] = %q, want %q", gi, g.Domain, ti, task.Name, want[gi].Tasks[ti].Name)
+			}
+		}
+	}
+
+	// 组内顺序保持任务数组原顺序（a.tv 组应为 a1、a2）
+	if groups[0].Tasks[0].Name != "a1" || groups[0].Tasks[1].Name != "a2" {
+		t.Errorf("in-group order not preserved: %+v", groups[0].Tasks)
+	}
+
+	// 全部禁用 → 空分组
+	if got := groupTasksByDomain([]spiderTask{{Name: "x", Enable: false, SourceURL: "https://a.tv"}}); len(got) != 0 {
+		t.Errorf("all-disabled should return no groups, got %+v", got)
+	}
+}
