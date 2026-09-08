@@ -68,10 +68,11 @@ type spiderTask struct {
 	NextPageSel string `json:"next_page_sel"`
 	ScrollTimes int    `json:"scroll_times"`
 
-	ListTitleSel  string `json:"list_title_sel"`  // 列表条目标题选择器（预查重/列表出文用；回退 h1~h6/首行文本）
-	ListCoverSel  string `json:"list_cover_sel"`  // mode=list 条目封面选择器
-	ListCoverAttr string `json:"list_cover_attr"` // mode=list 封面读哪个属性（默认 src；懒加载可填 data-src）
-	ListDescSel   string `json:"list_desc_sel"`   // mode=list 条目摘要选择器（回退条目文本）
+	ListTitleSel          string `json:"list_title_sel"`           // 列表条目标题选择器（预查重/列表出文用；回退 h1~h6/首行文本）
+	ListCoverSel          string `json:"list_cover_sel"`           // mode=list 条目封面选择器
+	ListCoverAttr         string `json:"list_cover_attr"`          // mode=list 封面读哪个属性（默认 src；懒加载可填 data-src）
+	ListCoverExtractRegex string `json:"list_cover_extract_regex"` // mode=list 封面正则抽取（background-image:url(...) 条目）
+	ListDescSel           string `json:"list_desc_sel"`            // mode=list 条目摘要选择器（回退条目文本）
 
 	LinkMode string `json:"link_mode"` // 链接获取：空/href=属性提取（默认）| click=模拟点击劫持 window.open（自动叠加属性提取，适配 javascript:void(0) 点击跳转站）
 	// 属性提取通道的组合配置（href 与 click 模式均生效）：
@@ -93,30 +94,45 @@ type spiderTask struct {
 
 	StopWhenExists int `json:"stop_when_exists"` // 连续 N 篇已存在则提前结束任务（0=不启用）；定时增量采集推荐 3~5
 
-	TitleSel    string `json:"title_sel"`    // 详情页标题选择器（回退 <title>）
-	CoverSel    string `json:"cover_sel"`    // 封面选择器（取 src；回退 og:image）
-	ContentSel  string `json:"content_sel"`  // 正文容器选择器（取 innerHTML）
-	KeywordsSel string `json:"keywords_sel"` // 关键词选择器（优先读 content 属性，回退文本；缺省回退 meta[name=keywords]）
+	// 字段统一提取模型：*_sel 定位元素 → *_attr 读属性（空=自动：meta 的 content 优先、回退文本；
+	// 封面是 img 的 src 优先，因此 meta/图片选择器都能直接配）→ *_extract_regex 从取到的值里
+	// 正则抽取（可 /re/ 包裹，取第一捕获组，无捕获组取整段）。适配 data-* 属性、
+	// <div style="background-image: url(...)">、script 内嵌地址等提取场景
+	TitleSel                string `json:"title_sel"`                  // 详情页标题选择器（回退 <title>）
+	TitleAttr               string `json:"title_attr"`                 // 标题读哪个属性（空=自动；可 data-title 等）
+	TitleExtractRegex       string `json:"title_extract_regex"`        // 标题正则抽取（去“ - 站名”后缀等）
+	CoverSel                string `json:"cover_sel"`                  // 封面选择器（未取到回退 og:image meta）
+	CoverAttr               string `json:"cover_attr"`                 // 封面读哪个属性（空=自动 src→content）
+	CoverExtractRegex       string `json:"cover_extract_regex"`        // 封面正则抽取（style 内 background-image:url(...) 等）
+	ContentSel              string `json:"content_sel"`                // 正文容器选择器（取 innerHTML）
+	ContentExtractRegex     string `json:"content_extract_regex"`      // 正文容器 HTML 的正则抽取（script 内嵌正文/播放数据的站）
+	KeywordsSel             string `json:"keywords_sel"`               // 关键词选择器（回退 meta[name=keywords]）
+	KeywordsAttr            string `json:"keywords_attr"`              // 关键词读哪个属性（空=自动）
+	KeywordsExtractRegex    string `json:"keywords_extract_regex"`     // 关键词正则抽取
+	PublishTimeSel          string `json:"publish_time_sel"`           // 发布时间选择器（回退 meta[property=article:published_time]）
+	PublishTimeAttr         string `json:"publish_time_attr"`          // 发布时间读哪个属性（空=自动）
+	PublishTimeExtractRegex string `json:"publish_time_extract_regex"` // 发布时间正则抽取
 	// 正文翻页：详情页正文分页时，content_next_sel 指向“下一页”按钮/链接，逐页拼接正文
 	// （a[href] 直接导航，无 href 则点击；content_max_pages 安全上限，默认 20）
 	ContentNextSel  string `json:"content_next_sel"`
 	ContentMaxPages int    `json:"content_max_pages"`
-	// 发布时间选择器（兼容 content 属性与文本；缺省回退 meta[property=article:published_time]；
-	// 解析失败用采集时刻）
-	PublishTimeSel string `json:"publish_time_sel"`
 
 	// 播放源：video_src_sel=直链（video 标签，embed=false）；video_iframe_sel=第三方播放页（iframe，embed=true）。
-	// 懒加载站 *_attr 可填 data-src；video_label_sel 给出与播放源同数量、同顺序（直链在前、iframe 在后）的
-	// 集名元素（缺省回退“第NN集”），video_label_attr 非空时读集名元素属性而非文本
-	VideoSrcSel     string `json:"video_src_sel"`     // 直链播放源选择器（video src）→ extends[video_sources]
-	VideoAttr       string `json:"video_attr"`        // 直链读哪个属性（默认 src）
-	VideoIframeSel  string `json:"video_iframe_sel"`  // iframe 播放源选择器（embed=true）→ extends[video_sources]
-	VideoIframeAttr string `json:"video_iframe_attr"` // iframe 读哪个属性（默认 src）
-	VideoLabelSel   string `json:"video_label_sel"`   // 集名元素选择器（与播放源一一对应）
-	VideoLabelAttr  string `json:"video_label_attr"`  // 集名读哪个属性（空=取文本）
+	// 懒加载站 *_attr 可填 data-src；*_extract_regex 从属性值正则抽地址（script 内嵌 m3u8 等）；
+	// video_label_sel 给出与播放源同数量、同顺序（直链在前、iframe 在后）的集名元素
+	// （缺省回退“第NN集”），video_label_attr 非空时读集名元素属性而非文本
+	VideoSrcSel             string `json:"video_src_sel"`              // 直链播放源选择器（video src）→ extends[video_sources]
+	VideoAttr               string `json:"video_attr"`                 // 直链读哪个属性（默认 src）
+	VideoExtractRegex       string `json:"video_extract_regex"`        // 直链地址正则抽取
+	VideoIframeSel          string `json:"video_iframe_sel"`           // iframe 播放源选择器（embed=true）→ extends[video_sources]
+	VideoIframeAttr         string `json:"video_iframe_attr"`          // iframe 读哪个属性（默认 src）
+	VideoIframeExtractRegex string `json:"video_iframe_extract_regex"` // iframe 地址正则抽取
+	VideoLabelSel           string `json:"video_label_sel"`            // 集名元素选择器（与播放源一一对应）
+	VideoLabelAttr          string `json:"video_label_attr"`           // 集名读哪个属性（空=取文本）
 
-	GallerySel  string `json:"gallery_sel"`  // 图集图片选择器 → extends[gallery_images]
-	GalleryAttr string `json:"gallery_attr"` // 图集读哪个属性（默认 src；懒加载可填 data-src）
+	GallerySel          string `json:"gallery_sel"`           // 图集图片选择器 → extends[gallery_images]
+	GalleryAttr         string `json:"gallery_attr"`          // 图集读哪个属性（默认 src；懒加载可填 data-src）
+	GalleryExtractRegex string `json:"gallery_extract_regex"` // 从属性值正则抽图址（适配 style 的 background-image:url(...) 图集）
 
 	Extra []spiderExtra `json:"extra"` // 通用 extends 键值提取（任意 key）
 
@@ -136,8 +152,9 @@ type spiderTask struct {
 // spiderExtra 通用 extends 字段提取规则
 type spiderExtra struct {
 	Key      string `json:"key"`      // extends 键名
-	Selector string `json:"selector"` // CSS 选择器
-	Attr     string `json:"attr"`     // 属性名（src/href/...）；空=取文本；"html"=innerHTML
+	Selector string `json:"selector"` // CSS 选择器；"@url"=从详情页 URL 提取（配 regex 抽 id/分集等）
+	Attr     string `json:"attr"`     // 属性名（src/href/content/style/...）；空=自动（meta 的 content 优先，回退文本）；"html"=innerHTML
+	Regex    string `json:"regex"`    // 从取到的值里正则抽取（可 /re/ 包裹，取第一捕获组）；空=原样返回
 	Multiple bool   `json:"multiple"` // 多值聚合为数组
 }
 
@@ -158,8 +175,10 @@ func (h *HeadlessSpider) Info() *pluginEntity.PluginInfo {
 			"③ link_mode=click 模拟点击劫持 window.open（逐条目精确配对标题，默认仅同源防广告）。" +
 			"翻页：page_url_pattern（URL 模板）/ next_page_sel（下一页按钮）/ scroll_times（滚动加载）。" +
 			"mode=list 直接从列表出文章（list_cover_sel/list_desc_sel）；正文翻页 content_next_sel+content_max_pages；" +
-			"keywords_sel/publish_time_sel 提取关键词与发布时间（回退 meta）；" +
-			"视频源 video_src_sel（直链 embed=false）+ video_iframe_sel（iframe 嵌入 embed=true）+ 懒加载 video_attr/video_iframe_attr/gallery_attr + 集名 video_label_sel；" +
+			"字段统一提取模型：title/keywords/publish_time/cover/list_cover/gallery/video/video_iframe/extra 均支持 *_attr 指定属性（空=自动：meta 的 content 优先回退文本，封面 src 优先，meta/图片选择器都能直接配）" +
+			"与 *_extract_regex 正则抽取（可 /re/ 包裹取第一捕获组；适配 background-image:url(...)、data-* 属性、script 内嵌地址；content_extract_regex 作用于正文容器 HTML）；" +
+			"extra 的 selector=@url 时直接从详情页 URL 提取；" +
+			"视频源 video_src_sel（直链 embed=false）+ video_iframe_sel（iframe 嵌入 embed=true）+ 集名 video_label_sel；" +
 			"登录态 user_agent/cookies；全局 retry 重试 / limit 限量 / dry_run 试运行 / debug_dir 失败截图 / dedup_by=url 按 URL 去重。" +
 			"timeout 为整页总预算（导航+渲染等待+滚动+取链共享，慢站调大）；browser 为本机 Chrome/Edge/Chromium 优先，找不到才下载精简版 Chromium；" +
 			"多任务按 source_url 域名分组并行采集：同域名共用一个浏览器实例，不同域名各起一个（max_browsers 控制并发上限，默认 3）",
@@ -343,17 +362,23 @@ func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {
 		// 带空格的选择器行为异常且难排查
 		for _, p := range []*string{
 			&t.Name, &t.SourceURL, &t.PageURLPattern, &t.WaitSelector, &t.ListSelector,
-			&t.ListTitleSel, &t.ListCoverSel, &t.ListCoverAttr, &t.ListDescSel,
+			&t.ListTitleSel, &t.ListCoverSel, &t.ListCoverAttr, &t.ListCoverExtractRegex, &t.ListDescSel,
 			&t.NextPageSel, &t.LinkSelector, &t.LinkAttr, &t.LinkExtractRegex, &t.LinkURLTemplate,
-			&t.TitleSel, &t.CoverSel, &t.ContentSel, &t.KeywordsSel, &t.ContentNextSel, &t.PublishTimeSel,
-			&t.VideoSrcSel, &t.VideoAttr, &t.VideoIframeSel, &t.VideoIframeAttr,
-			&t.VideoLabelSel, &t.VideoLabelAttr, &t.GallerySel, &t.GalleryAttr,
+			&t.TitleSel, &t.TitleAttr, &t.TitleExtractRegex,
+			&t.CoverSel, &t.CoverAttr, &t.CoverExtractRegex,
+			&t.ContentSel, &t.ContentExtractRegex, &t.ContentNextSel,
+			&t.KeywordsSel, &t.KeywordsAttr, &t.KeywordsExtractRegex,
+			&t.PublishTimeSel, &t.PublishTimeAttr, &t.PublishTimeExtractRegex,
+			&t.VideoSrcSel, &t.VideoAttr, &t.VideoExtractRegex,
+			&t.VideoIframeSel, &t.VideoIframeAttr, &t.VideoIframeExtractRegex,
+			&t.VideoLabelSel, &t.VideoLabelAttr, &t.GallerySel, &t.GalleryAttr, &t.GalleryExtractRegex,
 		} {
 			*p = strings.TrimSpace(*p)
 		}
 		for j := range t.Extra {
 			t.Extra[j].Key = strings.TrimSpace(t.Extra[j].Key)
 			t.Extra[j].Selector = strings.TrimSpace(t.Extra[j].Selector)
+			t.Extra[j].Regex = strings.TrimSpace(t.Extra[j].Regex)
 		}
 		if t.MaxPages <= 0 {
 			if t.NextPageSel != "" {
@@ -380,9 +405,25 @@ func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {
 		if t.ClickWaitMs <= 0 {
 			t.ClickWaitMs = 250
 		}
-		if t.LinkExtractRegex != "" {
-			if _, err := compileLinkRegex(t.LinkExtractRegex); err != nil {
-				return nil, fmt.Errorf("任务[%d]%s link_extract_regex 无效: %w", i+1, t.Name, err)
+		for field, pattern := range map[string]string{
+			"link_extract_regex":         t.LinkExtractRegex,
+			"title_extract_regex":        t.TitleExtractRegex,
+			"cover_extract_regex":        t.CoverExtractRegex,
+			"list_cover_extract_regex":   t.ListCoverExtractRegex,
+			"content_extract_regex":      t.ContentExtractRegex,
+			"keywords_extract_regex":     t.KeywordsExtractRegex,
+			"publish_time_extract_regex": t.PublishTimeExtractRegex,
+			"video_extract_regex":        t.VideoExtractRegex,
+			"video_iframe_extract_regex": t.VideoIframeExtractRegex,
+			"gallery_extract_regex":      t.GalleryExtractRegex,
+		} {
+			if _, err := compileExtractRegex(pattern); err != nil {
+				return nil, fmt.Errorf("任务[%d]%s %s 无效: %w", i+1, t.Name, field, err)
+			}
+		}
+		for j := range t.Extra {
+			if _, err := compileExtractRegex(t.Extra[j].Regex); err != nil {
+				return nil, fmt.Errorf("任务[%d]%s extra[%d]%s regex 无效: %w", i+1, t.Name, j, t.Extra[j].Key, err)
 			}
 		}
 		if _, err := parseCookies(t.Cookies, ""); err != nil {
@@ -1041,22 +1082,27 @@ func (t *spiderTask) linkValue(el *rod.Element) string {
 	if v == "" {
 		return ""
 	}
-	if t.LinkExtractRegex != "" {
-		re, err := compileLinkRegex(t.LinkExtractRegex)
-		if err != nil {
-			return ""
+	return buildLinkURL(t.LinkURLTemplate, applyExtractRegex(t.LinkExtractRegex, v))
+}
+
+// coverValue 封面取值：cover_attr 留空=自动（img 的 src 优先，回退 meta 的 content，
+// meta 选择器可直接配）；再经 cover_extract_regex 从属性值抽 URL
+// （如 style 的 background-image: url(...)）
+func (t *spiderTask) coverValue(el *rod.Element) string {
+	v := ""
+	if t.CoverAttr == "" {
+		if a, err := el.Attribute("src"); err == nil && a != nil {
+			v = strings.TrimSpace(*a)
 		}
-		m := re.FindStringSubmatch(v)
-		if m == nil {
-			return ""
+		if v == "" {
+			if a, err := el.Attribute("content"); err == nil && a != nil {
+				v = strings.TrimSpace(*a)
+			}
 		}
-		if len(m) > 1 {
-			v = m[1]
-		} else {
-			v = m[0]
-		}
+	} else if a, err := el.Attribute(t.CoverAttr); err == nil && a != nil {
+		v = strings.TrimSpace(*a)
 	}
-	return buildLinkURL(t.LinkURLTemplate, v)
+	return applyExtractRegex(t.CoverExtractRegex, v)
 }
 
 // buildLinkURL 按 link_url_template 生成最终 URL：
@@ -1071,12 +1117,33 @@ func buildLinkURL(template, value string) string {
 	return template + value
 }
 
-// compileLinkRegex 编译 link_extract_regex；兼容 /re/ 包裹写法（与 link_include 过滤约定一致）
-func compileLinkRegex(pattern string) (*regexp.Regexp, error) {
+// compileExtractRegex 编译抽取正则（link/cover/gallery/extra 的 *_extract_regex、regex 共用）；
+// 兼容 /re/ 包裹写法（与 link_include 过滤约定一致）
+func compileExtractRegex(pattern string) (*regexp.Regexp, error) {
 	if len(pattern) > 2 && strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
 		pattern = pattern[1 : len(pattern)-1]
 	}
 	return regexp.Compile(pattern)
+}
+
+// applyExtractRegex 从属性/文本值中抽取目标：pattern 空=原样返回（仅去空白）；
+// 取第一个捕获组，无捕获组取整段匹配；未命中或正则非法返回空串
+func applyExtractRegex(pattern, value string) string {
+	if pattern == "" {
+		return strings.TrimSpace(value)
+	}
+	re, err := compileExtractRegex(pattern)
+	if err != nil {
+		return ""
+	}
+	m := re.FindStringSubmatch(value)
+	if m == nil {
+		return ""
+	}
+	if len(m) > 1 {
+		return strings.TrimSpace(m[1])
+	}
+	return strings.TrimSpace(m[0])
 }
 
 // extractLinksByClick 点击拦截模式：劫持 window.open（只记录不真开新窗），对 list_selector
@@ -1234,8 +1301,9 @@ func (h *HeadlessSpider) extractListArticles(page *rod.Page, t *spiderTask, base
 		}
 		if t.ListCoverSel != "" {
 			if n, e := el.Element(t.ListCoverSel); e == nil {
-				if v, e2 := n.Attribute(t.listCoverAttr()); e2 == nil && v != nil && strings.TrimSpace(*v) != "" {
-					if ref2, perr2 := url.Parse(strings.TrimSpace(*v)); perr2 == nil {
+				v := applyExtractRegex(t.ListCoverExtractRegex, elementValue(n, t.listCoverAttr()))
+				if v != "" {
+					if ref2, perr2 := url.Parse(v); perr2 == nil {
 						item.Thumbnail = base.ResolveReference(ref2).String()
 					}
 				}
@@ -1318,11 +1386,11 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 	}
 	var missed []string // 未命中的字段选择器（提取结束时汇总输出）
 
-	// 标题：选择器或回退 <title>
+	// 标题：title_sel + title_attr/title_extract_regex（统一提取模型），回退 <title>
 	title := ""
 	if t.TitleSel != "" {
 		if el := h.fieldElement(page, &missed, "title_sel", t.TitleSel, fieldWait); el != nil {
-			title = strings.TrimSpace(el.MustText())
+			title = applyExtractRegex(t.TitleExtractRegex, elementValue(el, t.TitleAttr))
 		}
 	}
 	if title == "" {
@@ -1348,7 +1416,7 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 	// 正文最先提取（最关键字段先用预算；此前放在最后，前面的字段选择器等超时会把它饿死）
 	contentHTML := ""
 	if t.ContentSel != "" {
-		contentHTML = h.contentElement(page, t, &missed)
+		contentHTML = applyExtractRegex(t.ContentExtractRegex, h.contentElement(page, t, &missed))
 	}
 
 	// 发布时间：publish_time_sel 优先（兼容 content 属性与文本），
@@ -1357,7 +1425,7 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 	publishRaw := ""
 	if t.PublishTimeSel != "" {
 		if el := h.fieldElement(page, &missed, "publish_time_sel", t.PublishTimeSel, fieldWait); el != nil {
-			publishRaw = elementValueAuto(el)
+			publishRaw = applyExtractRegex(t.PublishTimeExtractRegex, elementValue(el, t.PublishTimeAttr))
 		}
 	}
 	if publishRaw == "" {
@@ -1386,7 +1454,7 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 	keywords := ""
 	if t.KeywordsSel != "" {
 		if el := h.fieldElement(page, &missed, "keywords_sel", t.KeywordsSel, fieldWait); el != nil {
-			keywords = elementValueAuto(el)
+			keywords = applyExtractRegex(t.KeywordsExtractRegex, elementValue(el, t.KeywordsAttr))
 		}
 	}
 	if keywords == "" {
@@ -1398,18 +1466,24 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 	}
 	item.Keywords = truncateRunes(keywords, 250)
 
-	// 封面：优先选择器元素 src，回退 og:image meta content
+	// 封面：cover_sel 按 cover_attr（空=自动 src→content，兼容 meta）/cover_extract_regex 取值，
+	// 回退 og:image meta content；取到后按详情页 URL 绝对化（正则/属性抽出常是相对路径）
 	if t.CoverSel != "" {
 		if el := h.fieldElement(page, &missed, "cover_sel", t.CoverSel, fieldWait); el != nil {
-			if src, e2 := el.Attribute("src"); e2 == nil && src != nil {
-				item.Thumbnail = *src
-			}
+			item.Thumbnail = t.coverValue(el)
 		}
 	}
 	if item.Thumbnail == "" {
 		if el := h.fieldElement(page, &missed, "og_image_meta", `meta[property="og:image"]`, metaWait); el != nil {
 			if content, e2 := el.Attribute("content"); e2 == nil && content != nil {
-				item.Thumbnail = *content
+				item.Thumbnail = strings.TrimSpace(*content)
+			}
+		}
+	}
+	if item.Thumbnail != "" {
+		if base, berr := url.Parse(link); berr == nil {
+			if ref, perr := url.Parse(item.Thumbnail); perr == nil {
+				item.Thumbnail = base.ResolveReference(ref).String()
 			}
 		}
 	}
@@ -1426,7 +1500,7 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 			}
 			chunk := ""
 			if el := h.fieldElement(page, &missed, "content_sel_翻页", t.ContentSel, fieldWait); el != nil {
-				chunk = el.MustHTML()
+				chunk = applyExtractRegex(t.ContentExtractRegex, el.MustHTML())
 			}
 			if chunk == "" || strings.HasSuffix(contentHTML, chunk) {
 				break
@@ -1449,8 +1523,8 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 				}
 			}
 		}
-		direct, _ := h.extractAttrList(page, t.VideoSrcSel, t.videoAttr())
-		embeds, _ := h.extractAttrList(page, t.VideoIframeSel, t.videoIframeAttr())
+		direct, _ := h.extractAttrList(page, t.VideoSrcSel, t.videoAttr(), t.VideoExtractRegex)
+		embeds, _ := h.extractAttrList(page, t.VideoIframeSel, t.videoIframeAttr(), t.VideoIframeExtractRegex)
 		sources := buildVideoSources(direct, labels, false, 0)
 		embedLabels := labels
 		if len(embedLabels) > len(direct) {
@@ -1464,22 +1538,29 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 		}
 	}
 	if t.GallerySel != "" {
-		if srcs, e := h.extractAttrList(page, t.GallerySel, t.galleryAttr()); e == nil && len(srcs) > 0 {
+		if srcs, e := h.extractAttrList(page, t.GallerySel, t.galleryAttr(), t.GalleryExtractRegex); e == nil && len(srcs) > 0 {
 			extends = append(extends, vo.ExtendsItem{Key: "gallery_images", Value: srcs})
 		}
 	}
 
-	// 通用 extends 键值提取（任意 key：作者/版本/语言/自定义...）
+	// 通用 extends 键值提取（任意 key：作者/版本/语言/自定义...；
+	// selector="@url" 时跳过 DOM，从详情页 URL 本身提取，配 regex 抽 id/分集号等）
 	for _, ex := range t.Extra {
 		if ex.Key == "" || ex.Selector == "" {
 			continue
 		}
+		if ex.Selector == "@url" {
+			if v := applyExtractRegex(ex.Regex, link); v != "" {
+				extends = append(extends, vo.ExtendsItem{Key: ex.Key, Value: v})
+			}
+			continue
+		}
 		if ex.Multiple {
-			if vals, e := h.extractAttrList(page, ex.Selector, ex.Attr); e == nil && len(vals) > 0 {
+			if vals, e := h.extractAttrList(page, ex.Selector, ex.Attr, ex.Regex); e == nil && len(vals) > 0 {
 				extends = append(extends, vo.ExtendsItem{Key: ex.Key, Value: vals})
 			}
 		} else if el := h.fieldElement(page, &missed, "extra:"+ex.Key, ex.Selector, fieldWait); el != nil {
-			if v := elementValue(el, ex.Attr); v != "" {
+			if v := applyExtractRegex(ex.Regex, elementValue(el, ex.Attr)); v != "" {
 				extends = append(extends, vo.ExtendsItem{Key: ex.Key, Value: v})
 			}
 		}
@@ -1544,10 +1625,16 @@ func (h *HeadlessSpider) gotoDetailNext(page *rod.Page, t *spiderTask) bool {
 	return true
 }
 
-// elementValue 按规则取元素值：attr 为空=文本，"html"=innerHTML，否则取指定属性
+// elementValue 按规则取元素值：attr 为空=自动（优先 content 属性适配 meta 类元素，为空回退文本），
+// "html"=innerHTML，否则取指定属性
 func elementValue(el *rod.Element, attr string) string {
 	switch {
 	case attr == "":
+		if v, err := el.Attribute("content"); err == nil && v != nil {
+			if s := strings.TrimSpace(*v); s != "" {
+				return s
+			}
+		}
 		return strings.TrimSpace(el.MustText())
 	case attr == "html":
 		return el.MustHTML()
@@ -1559,25 +1646,15 @@ func elementValue(el *rod.Element, attr string) string {
 	return ""
 }
 
-// elementValueAuto 元素取值：优先 content 属性（meta 类元素），为空回退文本
-func elementValueAuto(el *rod.Element) string {
-	if v, err := el.Attribute("content"); err == nil && v != nil {
-		if s := strings.TrimSpace(*v); s != "" {
-			return s
-		}
-	}
-	return strings.TrimSpace(el.MustText())
-}
-
-// extractAttrList 提取一组元素的指定值（多值聚合）
-func (h *HeadlessSpider) extractAttrList(page *rod.Page, selector, attr string) ([]string, error) {
+// extractAttrList 提取一组元素的指定值（多值聚合）；regex 非空时对每个值做正则抽取
+func (h *HeadlessSpider) extractAttrList(page *rod.Page, selector, attr, regex string) ([]string, error) {
 	els, err := page.Elements(selector)
 	if err != nil {
 		return nil, err
 	}
 	var vals []string
 	for _, el := range els {
-		if v := elementValue(el, attr); v != "" {
+		if v := applyExtractRegex(regex, elementValue(el, attr)); v != "" {
 			vals = append(vals, v)
 		}
 	}

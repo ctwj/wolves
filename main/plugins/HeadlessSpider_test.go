@@ -142,24 +142,71 @@ func TestBuildLinkURL(t *testing.T) {
 	}
 }
 
-func TestCompileLinkRegex(t *testing.T) {
+func TestCompileExtractRegex(t *testing.T) {
 	// /re/ 包裹与裸正则等价
-	re, err := compileLinkRegex(`/video/(\d+)/`)
+	re, err := compileExtractRegex(`/video/(\d+)/`)
 	if err != nil {
 		t.Fatalf("compile /re/ wrapped: %v", err)
 	}
 	if m := re.FindStringSubmatch(`location.href='/video/123'`); m == nil || m[1] != "123" {
 		t.Errorf("capture group want 123, got %v", m)
 	}
-	re2, err := compileLinkRegex(`\d+`)
+	re2, err := compileExtractRegex(`\d+`)
 	if err != nil {
 		t.Fatalf("compile bare: %v", err)
 	}
 	if m := re2.FindStringSubmatch("abc456"); m == nil || m[0] != "456" {
 		t.Errorf("whole match want 456, got %v", m)
 	}
-	if _, err := compileLinkRegex(`(`); err == nil {
+	if _, err := compileExtractRegex(`(`); err == nil {
 		t.Error("invalid pattern should return error")
+	}
+}
+
+func TestApplyExtractRegex(t *testing.T) {
+	// vjs-poster 场景：style 属性里的 background-image 图址（DOM 属性值已解码 &quot;）
+	urlPattern := `/url\(["']?([^"')]+)["']?\)/`
+	cases := []struct {
+		name, pattern, value, want string
+	}{
+		{"双引号 url", urlPattern,
+			`background-image: url("https://img.example.cfd/pic/media/videos/tmb/000/002/608/5.jpg");`,
+			"https://img.example.cfd/pic/media/videos/tmb/000/002/608/5.jpg"},
+		{"无引号 url", urlPattern, `background-image: url(https://a.tv/1.jpg);`, "https://a.tv/1.jpg"},
+		{"单引号 url", urlPattern, `background-image: url('https://a.tv/2.jpg')`, "https://a.tv/2.jpg"},
+		{"空正则原样（去空白）", "", "  https://a.tv/1.jpg ", "https://a.tv/1.jpg"},
+		{"无捕获组取整段", `\d+`, "第12集", "12"},
+		{"未命中返回空", urlPattern, "no image here", ""},
+		{"非法正则返回空", "(", "anything", ""},
+	}
+	for _, c := range cases {
+		if got := applyExtractRegex(c.pattern, c.value); got != c.want {
+			t.Errorf("%s: applyExtractRegex(%q, %q) = %q, want %q", c.name, c.pattern, c.value, got, c.want)
+		}
+	}
+}
+
+func TestParseTasksExtractRegexValidation(t *testing.T) {
+	// 非法 extract_regex 应在配置解析期报错，而不是采集期静默取不到值
+	h := &HeadlessSpider{Tasks: `[{` +
+		`"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".item",` +
+		`"cover_sel":".poster","cover_attr":"style","cover_extract_regex":"("}]`}
+	if _, err := h.parseTasks(); err == nil {
+		t.Fatal("invalid cover_extract_regex should fail parseTasks")
+	}
+
+	// 合法配置（含 poster 正则与 @url 伪选择器）应通过解析
+	h2 := &HeadlessSpider{Tasks: `[{` +
+		`"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".item",` +
+		`"cover_sel":".vjs-poster","cover_attr":"style",` +
+		`"cover_extract_regex":"/url\\([\"']?([^\"')]+)[\"']?\\)/",` +
+		`"extra":[{"key":"vid","selector":"@url","regex":"/video/(\\d+)/"}]}]`}
+	tasks, err := h2.parseTasks()
+	if err != nil {
+		t.Fatalf("valid config should parse: %v", err)
+	}
+	if tasks[0].CoverExtractRegex == "" || len(tasks[0].Extra) != 1 || tasks[0].Extra[0].Selector != "@url" {
+		t.Fatalf("unexpected parse result: cover=%q extra=%+v", tasks[0].CoverExtractRegex, tasks[0].Extra)
 	}
 }
 

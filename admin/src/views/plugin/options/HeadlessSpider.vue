@@ -200,51 +200,97 @@
           <a-form-item label="链接排除">
             <a-input v-model="t.link_exclude" placeholder="子串或 /正则/，留空不排除" allow-clear />
           </a-form-item>
+          <a-form-item label="条目封面">
+            <a-input v-model="t.list_cover_sel" placeholder="mode=list 条目封面选择器（list 模式入库用）" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.list_cover_attr" placeholder="属性：默认 src；可 data-src" size="small" allow-clear />
+              <a-input v-model="t.list_cover_extract_regex" placeholder="正则：background-image 条目图" size="small" allow-clear />
+            </div>
+          </a-form-item>
 
           <!-- 详情页字段 -->
           <a-divider orientation="left" :margin="8">详情页字段（detail 模式）</a-divider>
-          <a-form-item label="标题选择器">
-            <a-input v-model="t.title_sel" placeholder="如 h1.title，留空取 <title>" allow-clear />
+          <a-typography-text type="secondary" class="text-xs block mb-2">
+            统一提取模型：选择器定位 → 属性（留空=自动，meta 的 content 优先回退文本；封面是 src 优先）→ 正则抽取（可 /re/ 包裹，取第一捕获组，如 /url\(["']?([^"')]+)["']?\)/ 抽 background-image 图址）。只填选择器时与旧版行为一致。
+          </a-typography-text>
+          <a-form-item label="标题">
+            <a-input v-model="t.title_sel" placeholder="选择器，如 h1.title；留空取 <title>" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.title_attr" placeholder="属性：空=自动；可 data-title" size="small" allow-clear />
+              <a-input v-model="t.title_extract_regex" placeholder="正则：如 /(.+?)\s*[-|]\s*站名$/ 去后缀" size="small" allow-clear />
+            </div>
           </a-form-item>
-          <a-form-item label="封面选择器">
-            <a-input v-model="t.cover_sel" placeholder="取 src；留空回退 og:image" allow-clear />
+          <a-form-item label="封面">
+            <a-input v-model="t.cover_sel" placeholder="选择器：img / meta[...] / .vjs-poster；留空回退 og:image" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.cover_attr" placeholder="属性：空=自动(src→content)；可 style" size="small" allow-clear />
+              <a-input v-model="t.cover_extract_regex" placeholder="正则：抽 style 里 background-image 图址" size="small" allow-clear />
+            </div>
+            <template #extra>
+              <a-typography-text type="secondary" class="text-xs">
+                例：封面在 &lt;div class="vjs-poster" style="background-image:url(...)"&gt; 时，属性填 style、正则填 /url\(["']?([^"')]+)["']?\)/。
+              </a-typography-text>
+            </template>
           </a-form-item>
-          <a-form-item label="正文选择器">
+          <a-form-item label="正文">
             <a-input v-model="t.content_sel" placeholder="正文容器选择器，取 innerHTML" allow-clear />
+            <a-input v-model="t.content_extract_regex" class="mt-1" placeholder="正则：从容器 HTML 抽片段（script 内嵌正文/播放数据的站）" size="small" allow-clear />
             <template #extra>
               <a-typography-text type="secondary" class="text-xs">
                 正文容器选择器（取 innerHTML）。命中后日志会记录正文长度与前 150 字预览；容器先渲染、正文 JS 后填充的站点，把渲染等待元素配成「本选择器:not(:empty)」。
               </a-typography-text>
             </template>
           </a-form-item>
-          <a-form-item label="播放源选择器">
-            <a-input v-model="t.video_src_sel" placeholder="如 .player video, .player iframe" allow-clear />
-            <template #extra>
-              <a-typography-text type="secondary" class="text-xs">
-                提取 video/iframe 的 src 写入 extends[video_sources]，对接 wolves 视频页。
-              </a-typography-text>
-            </template>
+          <a-form-item label="关键词">
+            <a-input v-model="t.keywords_sel" placeholder="选择器；留空回退 meta[name=keywords]" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.keywords_attr" placeholder="属性：空=自动" size="small" allow-clear />
+              <a-input v-model="t.keywords_extract_regex" placeholder="正则抽取" size="small" allow-clear />
+            </div>
           </a-form-item>
-          <a-form-item label="图集选择器">
-            <a-input v-model="t.gallery_sel" placeholder="图集页图片选择器" allow-clear />
-            <template #extra>
-              <a-typography-text type="secondary" class="text-xs">
-                提取图片 src 写入 extends[gallery_images]，对接 wolves 图集页。
-              </a-typography-text>
-            </template>
+          <a-form-item label="发布时间">
+            <a-input v-model="t.publish_time_sel" placeholder="选择器；留空回退 article:published_time" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.publish_time_attr" placeholder="属性：空=自动" size="small" allow-clear />
+              <a-input v-model="t.publish_time_extract_regex" placeholder="正则：从值中抽日期时间" size="small" allow-clear />
+            </div>
+          </a-form-item>
+          <a-form-item label="播放源(直链)">
+            <a-input v-model="t.video_src_sel" placeholder="如 .player video；写入 extends[video_sources]" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.video_attr" placeholder="属性：默认 src；可 data-src" size="small" allow-clear />
+              <a-input v-model="t.video_extract_regex" placeholder="正则：从属性值抽 m3u8 等" size="small" allow-clear />
+            </div>
+          </a-form-item>
+          <a-form-item label="播放源(iframe)">
+            <a-input v-model="t.video_iframe_sel" placeholder="第三方播放页 iframe 选择器（embed=true）" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.video_iframe_attr" placeholder="属性：默认 src；可 data-src" size="small" allow-clear />
+              <a-input v-model="t.video_iframe_extract_regex" placeholder="正则抽取" size="small" allow-clear />
+            </div>
+          </a-form-item>
+          <a-form-item label="图集">
+            <a-input v-model="t.gallery_sel" placeholder="图集页图片选择器；写入 extends[gallery_images]" allow-clear />
+            <div class="grid grid-cols-2 gap-2 mt-1">
+              <a-input v-model="t.gallery_attr" placeholder="属性：默认 src；可 data-src" size="small" allow-clear />
+              <a-input v-model="t.gallery_extract_regex" placeholder="正则：background-image 图集" size="small" allow-clear />
+            </div>
           </a-form-item>
 
           <!-- 扩展字段 -->
           <a-divider orientation="left" :margin="8">扩展字段（extends）</a-divider>
-          <div v-for="(ex, j) in (t.extra || [])" :key="j" class="flex items-center gap-2 mb-2">
-            <a-input v-model="ex.key" placeholder="键名 如 author" style="width: 130px" />
-            <a-input v-model="ex.selector" placeholder="CSS 选择器" class="flex-1" />
-            <a-select v-model="ex.attr" style="width: 110px" placeholder="取值方式">
-              <a-option value="">文本</a-option>
+          <div v-for="(ex, j) in (t.extra || [])" :key="j" class="flex items-center gap-2 mb-2 flex-wrap">
+            <a-input v-model="ex.key" placeholder="键名 如 author" style="width: 120px" />
+            <a-input v-model="ex.selector" placeholder="CSS 选择器 或 @url（从页面 URL 提取）" style="width: 230px" />
+            <a-select v-model="ex.attr" style="width: 130px" placeholder="取值方式">
+              <a-option value="">自动(文本兜底)</a-option>
               <a-option value="html">innerHTML</a-option>
               <a-option value="src">src 属性</a-option>
               <a-option value="href">href 属性</a-option>
+              <a-option value="content">content 属性</a-option>
+              <a-option value="style">style 属性</a-option>
             </a-select>
+            <a-input v-model="ex.regex" placeholder="正则抽取，可 /re/ 取第一捕获组" class="flex-1" style="min-width: 150px" />
             <a-tooltip content="多值：聚合所有匹配元素为数组">
               <a-switch v-model="ex.multiple" size="small" />
             </a-tooltip>
@@ -406,11 +452,32 @@ function newTask() {
     link_include: "",
     link_exclude: "",
     stop_when_exists: 0,
+    list_cover_sel: "",
+    list_cover_attr: "",
+    list_cover_extract_regex: "",
     title_sel: "",
+    title_attr: "",
+    title_extract_regex: "",
     cover_sel: "",
+    cover_attr: "",
+    cover_extract_regex: "",
     content_sel: "",
+    content_extract_regex: "",
+    keywords_sel: "",
+    keywords_attr: "",
+    keywords_extract_regex: "",
+    publish_time_sel: "",
+    publish_time_attr: "",
+    publish_time_extract_regex: "",
     video_src_sel: "",
+    video_attr: "",
+    video_extract_regex: "",
+    video_iframe_sel: "",
+    video_iframe_attr: "",
+    video_iframe_extract_regex: "",
     gallery_sel: "",
+    gallery_attr: "",
+    gallery_extract_regex: "",
     extra: [],
     content_type: "",
     category_id: 0,
@@ -423,7 +490,7 @@ function addTask() {
 
 function addExtra(t) {
   if (!Array.isArray(t.extra)) t.extra = [];
-  t.extra.push({ key: "", selector: "", attr: "", multiple: false });
+  t.extra.push({ key: "", selector: "", attr: "", regex: "", multiple: false });
 }
 
 function insertExample() {
@@ -435,9 +502,18 @@ function insertExample() {
     wait_selector: ".video-list",
     list_selector: ".video-list a",
     title_sel: "h1.title",
-    cover_sel: "img.cover",
+    // 封面在 <div class="vjs-poster" style="background-image:url(...)"> 的站：
+    // 属性填 style，正则从属性值里抽图址
+    cover_sel: ".vjs-poster",
+    cover_attr: "style",
+    cover_extract_regex: '/url\\(["\']?([^"\')]+)["\']?\\)/',
     content_sel: ".detail-content",
-    extra: [{ key: "author", selector: ".author", attr: "", multiple: false }],
+    video_src_sel: ".player video",
+    extra: [
+      { key: "author", selector: ".author", attr: "", regex: "", multiple: false },
+      // @url 伪选择器：从详情页 URL 抽视频 ID
+      { key: "vid", selector: "@url", attr: "", regex: "/video/(\\d+)/", multiple: false },
+    ],
     content_type: "video",
     category_id: 1,
   });
