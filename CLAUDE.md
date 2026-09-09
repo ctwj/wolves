@@ -48,7 +48,7 @@ cd main && go test -v -run TestXxx ./plugins/   # 单个测试函数
 - 插件结构体的导出字段即配置项(json tag),持久化到数据库并可在后台编辑。
 - **必须**在 `main/startup/startup.go` 的 `initPlugins()` 中注册(`appService.PluginInit(plugins.NewXxx(), ...)`);新增插件后记得来这里登记。当前被注释停用的:`NewDidiAuto`、`PushToBaidu`、`PushToBing`、`NewGenerateDescription`。
 - 事件钩子:`domain/core/event/` 定义 `ArticleCreateBefore`/`ArticleUpdateBefore` 等接口,插件在 `Load()` 里自注册,如 `service.Article.AddCreateBeforeEvents(s)`(见 `SaveArticleImages.go`、`ArticleSanitizer.go`)。文章保存时这些钩子会被领域服务回调。
-- 插件分类:内容处理(ArticleSanitizer、GenerateSlug、SaveArticleImages、DetectLinks、PreBuildArticleCache、MakeCarousel、PostStore 定时从仓库发布文章)、SEO 推送(PushToSearchEngine 统一百度+Bing,已取代 PushToBaidu/PushToBing)、网盘转存(BaiduCloudTransfer、QuarkCloudTransfer、DirectLinkDownload)、采集(GnDownSpider、HeadlessSpider)、下载限流(DownloadLimit)、AI SEO(AISeoPlugin)、外链处理(ExternalLinkPlugin)。百度相关公共逻辑在 `main/plugins/baidu_utils/`。
+- 插件分类:内容处理(ArticleSanitizer、GenerateSlug、SaveArticleImages、DetectLinks、PreBuildArticleCache、MakeCarousel、PostStore 定时从仓库发布文章)、SEO 推送(PushToSearchEngine 统一百度+Bing,已取代 PushToBaidu/PushToBing)、网盘转存(BaiduCloudTransfer、QuarkCloudTransfer、DirectLinkDownload)、采集(GnDownSpider、HeadlessSpider、HttpSpider——纯 HTTP+goquery 无浏览器采集,配置模型与 HeadlessSpider 对齐,任务内详情页并发)、下载限流(DownloadLimit)、AI SEO(AISeoPlugin)、外链处理(ExternalLinkPlugin)。百度相关公共逻辑在 `main/plugins/baidu_utils/`。
 - 已知问题(继承自 moss,未修复):`go vet` 报 `AISeoPlugin.go` 多处复制含 `sync.Mutex` 的 `APIConfig` 结构体值。
 
 ### 主题与模板
