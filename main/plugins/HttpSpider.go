@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,8 +26,8 @@ import (
 	"moss/domain/core/entity"
 	"moss/domain/core/service"
 	"moss/domain/core/vo"
-	"moss/infrastructure/utils/request"
 	pluginEntity "moss/domain/support/entity"
+	"moss/infrastructure/utils/request"
 )
 
 // HttpSpider 通用 HTTP 采集插件（无浏览器）
@@ -158,7 +159,8 @@ func (h *HttpSpider) Info() *pluginEntity.PluginInfo {
 			"每任务独立 user_agent/headers（JSON 对象）/cookies（原始 Cookie 头字符串）/encoding" +
 			"（强制解码如 gbk，留空自动检测 header/meta 声明，无声明且非 UTF-8 时回退 GBK）。" +
 			"全局 proxy/timeout/retry/limit/dry_run/debug_dir（失败存响应 HTML）/dedup_by，" +
-			"stop_when_exists 连续已存在早停。" +
+			"stop_when_exists 连续已存在早停（触发即终止整个任务翻页，不再请求后续列表页）；" +
+			"interval 为单 worker 每篇入库后的等待秒数，并发下不构成全局节流，严格限频请调低 concurrency。" +
 			"与 HeadlessSpider 的分工：目标站查看源代码（Ctrl+U）能看到完整内容的用本插件；" +
 			"源代码里没有、需浏览器渲染/模拟点击/滚动加载的用 HeadlessSpider",
 		RunEnable:  true,
@@ -243,6 +245,9 @@ type httpFetcher struct {
 	cookies string
 }
 
+// defaultUserAgent 内置默认 Chrome UA（取 utils/request 默认值缓存于包级变量，避免每次建 fetcher 重复分配）
+var defaultUserAgent = request.New().Header["User-Agent"]
+
 // newHTTPFetcher 按插件全局 + 任务配置构建抓取器。
 // 自建 http.Client 而不复用 utils/request：并发 worker 共用 request.Request 会竞争其 retryCount，
 // 且共享的 Transport 连接池对高频抓取至关重要
@@ -266,7 +271,7 @@ func newHTTPFetcher(h *HttpSpider, t *httpTask) *httpFetcher {
 	}
 	ua := t.UserAgent
 	if ua == "" {
-		ua = request.New().Header["User-Agent"] // 复用内置默认 Chrome UA
+		ua = defaultUserAgent
 	}
 	f.headers["User-Agent"] = ua
 	f.headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
@@ -321,6 +326,10 @@ func (h *HttpSpider) fetchDoc(f *httpFetcher, t *httpTask, pageURL string) (doc 
 	body, ctype, finalURL, err := f.get(pageURL)
 	if err != nil {
 		return nil, body, err
+	}
+	if len(body) >= maxBodySize {
+		h.ctx.Log.Warn("响应体达到 10MB 上限可能被截断，解析结果或残缺",
+			zap.String("task", t.Name), zap.String("url", pageURL))
 	}
 	html, err := decodeHTMLBody(body, ctype, t.Encoding)
 	if err != nil {
@@ -406,6 +415,17 @@ func (h *HttpSpider) parseTasks() ([]httpTask, error) {
 		for j := range t.Extra {
 			if _, err := compileExtractRegex(t.Extra[j].Regex); err != nil {
 				return nil, fmt.Errorf("任务[%d]%s extra[%d]%s regex 无效: %w", i+1, t.Name, j, t.Extra[j].Key, err)
+			}
+		}
+		// link_include/link_exclude 按 matchOne 约定：/re/ 包裹为正则（解析期校验语法），其余按子串匹配不校验
+		for field, pattern := range map[string]string{
+			"link_include": t.LinkInclude,
+			"link_exclude": t.LinkExclude,
+		} {
+			if len(pattern) > 2 && strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
+				if _, err := regexp.Compile(pattern[1 : len(pattern)-1]); err != nil {
+					return nil, fmt.Errorf("任务[%d]%s %s 正则无效: %w", i+1, t.Name, field, err)
+				}
 			}
 		}
 		if _, err := parseHeaders(t.Headers); err != nil {
@@ -1002,7 +1022,10 @@ func (h *HttpSpider) runTask(t *httpTask) taskResult {
 			return false
 		}
 		h.processLinks(t, fetcher, links, st, &mu)
-		return true
+		mu.Lock()
+		stop := st.stopTask // stop_when_exists/limit 已触发则终止翻页，不再请求后续列表页
+		mu.Unlock()
+		return !stop
 	}
 
 	if t.NextPageSel != "" {
@@ -1076,14 +1099,13 @@ func resolveBase(pageURL string, doc *goquery.Document) *url.URL {
 }
 
 // processLinks 详情链接并发处理：worker 池上限 h.Concurrency，共享 st 加锁。
-// 早停/limit 触发时停止投递并等待在途 worker 完成
+// 早停/limit 触发时置位 st.stopTask（跨列表页生效，visitPage 依据它终止翻页）并停止投递，等待在途 worker 完成
 func (h *HttpSpider) processLinks(t *httpTask, f *httpFetcher, links []httpLink, st *taskStats, mu *sync.Mutex) {
 	sem := make(chan struct{}, h.Concurrency)
 	var wg sync.WaitGroup
-	stop := false
 	for _, link := range links {
 		mu.Lock()
-		if stop || (h.Limit > 0 && st.collected >= h.Limit) {
+		if st.stopTask || (h.Limit > 0 && st.collected >= h.Limit) {
 			mu.Unlock()
 			break
 		}
@@ -1096,14 +1118,12 @@ func (h *HttpSpider) processLinks(t *httpTask, f *httpFetcher, links []httpLink,
 				mu.Lock()
 				st.skipped++
 				st.consecExists++
-				hit := h.hitStop(t, st, mu)
-				mu.Unlock()
-				if hit {
-					mu.Lock()
-					stop = true
+				if h.hitStop(t, st) {
+					st.stopTask = true
 					mu.Unlock()
 					break
 				}
+				mu.Unlock()
 				continue
 			}
 		}
@@ -1125,18 +1145,15 @@ func (h *HttpSpider) processLinks(t *httpTask, f *httpFetcher, links []httpLink,
 				mu.Lock()
 				st.skipped++
 				st.consecExists++
-				hit := h.hitStop(t, st, mu)
-				mu.Unlock()
-				if hit {
-					mu.Lock()
-					stop = true
-					mu.Unlock()
+				if h.hitStop(t, st) {
+					st.stopTask = true
 				}
+				mu.Unlock()
 				return
 			}
 			if h.processArticle(t, article, st, mu) {
 				mu.Lock()
-				stop = true
+				st.stopTask = true
 				mu.Unlock()
 			}
 		}(link)
@@ -1144,7 +1161,7 @@ func (h *HttpSpider) processLinks(t *httpTask, f *httpFetcher, links []httpLink,
 	wg.Wait()
 }
 
-// processArticle 单篇入库（试运行只记录不入库；limit 达标返回 true 应结束任务）。
+// processArticle 单篇入库（试运行只记录不入库；limit 达标或连续已存在早停返回 true，调用方置位 st.stopTask 结束任务）。
 // 统计与入库判定在锁内串行（DB 查重+写入毫秒级，并发 worker 串行化换取防重复入库的正确性）；
 // interval 睡眠在锁外，不阻塞其他 worker
 func (h *HttpSpider) processArticle(t *httpTask, article *entity.Article, st *taskStats, mu *sync.Mutex) bool {
@@ -1160,7 +1177,7 @@ func (h *HttpSpider) processArticle(t *httpTask, article *entity.Article, st *ta
 		st.skipped++
 		st.consecExists++
 		h.ctx.Log.Debug("文章已存在，跳过", zap.String("slug", article.Slug))
-		return h.hitStop(t, st, mu)
+		return h.hitStop(t, st)
 	}
 	st.consecExists = 0
 
@@ -1189,10 +1206,10 @@ func (h *HttpSpider) processArticle(t *httpTask, article *entity.Article, st *ta
 	return h.Limit > 0 && st.collected >= h.Limit
 }
 
-// hitStop 连续已存在计数是否触发提前结束（调用方须持有 mu）
-func (h *HttpSpider) hitStop(t *httpTask, st *taskStats, mu *sync.Mutex) bool {
+// hitStop 连续已存在计数是否触发提前结束（调用方须持有 mu；命中后由调用方置位 st.stopTask 终止整个任务）
+func (h *HttpSpider) hitStop(t *httpTask, st *taskStats) bool {
 	if t.StopWhenExists > 0 && st.consecExists >= t.StopWhenExists {
-		h.ctx.Log.Info("连续多篇已存在，提前结束任务",
+		h.ctx.Log.Info("连续多篇已存在，提前结束任务（终止翻页）",
 			zap.String("task", t.Name), zap.Int("consecutive", st.consecExists))
 		return true
 	}

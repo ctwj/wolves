@@ -86,6 +86,24 @@ func TestHttpParseTasks(t *testing.T) {
 		t.Error("invalid title_extract_regex should fail")
 	}
 
+	// link_include/link_exclude 的 /re/ 包裹正则在解析期校验；非包裹写法按子串匹配不校验
+	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","link_include":"/detail-(\d+/"}]`
+	if _, err := h.parseTasks(); err == nil {
+		t.Error("invalid /re/ link_include should fail")
+	}
+	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","link_exclude":"/[/"}]`
+	if _, err := h.parseTasks(); err == nil {
+		t.Error("invalid /re/ link_exclude should fail")
+	}
+	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","link_include":"detail(子串"}]`
+	if _, err := h.parseTasks(); err != nil {
+		t.Errorf("substring-style link_include should not be regex-validated: %v", err)
+	}
+	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","link_include":"/detail-\\d+/","link_exclude":"/\\?from=/"}]`
+	if _, err := h.parseTasks(); err != nil {
+		t.Errorf("valid /re/ filters should parse: %v", err)
+	}
+
 	// headers 非法 JSON 报错
 	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","headers":"{bad"}]`
 	if _, err := h.parseTasks(); err == nil {
@@ -349,13 +367,13 @@ func TestHttpExtractArticle(t *testing.T) {
 	doc := httpDoc(html)
 
 	tk := &httpTask{
-		SourceURL:   "https://a.tv/list",
+		SourceURL:    "https://a.tv/list",
 		ListSelector: ".item",
-		TitleSel:    "h1.title",
-		CoverSel:    ".poster img",
-		ContentSel:  "article.content",
-		CategoryID:  3,
-		ContentType: "novel",
+		TitleSel:     "h1.title",
+		CoverSel:     ".poster img",
+		ContentSel:   "article.content",
+		CategoryID:   3,
+		ContentType:  "novel",
 		Extra: []spiderExtra{
 			{Key: "vid", Selector: ".vid", Attr: "data-id"},
 			{Key: "page_num", Selector: "@url", Regex: `/detail/(\d+)`},
@@ -460,11 +478,11 @@ func TestHttpExtractArticleMedia(t *testing.T) {
 	doc := httpDoc(html)
 
 	tk := &httpTask{
-		SourceURL:    "https://a.tv/list",
-		ListSelector: ".item",
-		TitleSel:     "h1",
-		VideoSrcSel:  "video",
-		VideoAttr:    "data-src", // 懒加载：video2 走 data-src；video1 无 data-src 回退 src
+		SourceURL:      "https://a.tv/list",
+		ListSelector:   ".item",
+		TitleSel:       "h1",
+		VideoSrcSel:    "video",
+		VideoAttr:      "data-src", // 懒加载：video2 走 data-src；video1 无 data-src 回退 src
 		VideoIframeSel: "iframe",
 		VideoLabelSel:  ".labels span",
 		GallerySel:     ".gallery img",

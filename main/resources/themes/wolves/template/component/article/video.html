@@ -1,15 +1,14 @@
 {{block articleVideo()}}
-{* 视频观看页：播放器（直链 video / 嵌入 iframe）+ 选集栏（多集时显示） *}
+{* 视频观看页：播放器 + 选集栏（多集时显示）。直链通道：SSR 渲染原生 video 作无 JS/组件加载失败回退，
+   库就绪后由 ArtPlayer 接管（m3u8 经本地 hls.js 全浏览器可播）；嵌入通道走第三方 iframe。
+   断点续播 / 自动连播 / 倍速与音量记忆基于 localStorage *}
 <div class="w-surface rounded-2xl shadow-sm border w-border mb-6 overflow-hidden">
     {{ if len(Data.VideoList) > 0 }}
-    <div class="video-player-wrap">
-        {{ cur := Data.VideoList[0] }}
-        {{ if len(Data.VideoList) > 1 }}
-            {{ range i, item := Data.VideoList }}
-                {{ if i == 0 }}{{ cur = item }}{{ end }}
-            {{ end }}
-        {{ end }}
-        <video id="video-player" class="video-player" controls preload="metadata"{{ if cur.Embed }} hidden{{ end }} src="{{ if !cur.Embed }}{{ cur.URL }}{{ end }}"></video>
+    {{ cur := Data.VideoList[0] }}
+    <div class="video-player-wrap" id="video-player-wrap" data-article-id="{{ Data.ID }}">
+        <video id="video-player" class="video-player" controls preload="metadata" playsinline{{ if Data.Thumbnail != "" }} poster="{{ Data.Thumbnail }}"{{ end }}{{ if !cur.Embed }} src="{{ cur.URL }}"{{ end }}{{ if cur.Embed }} hidden{{ end }}></video>
+        <div id="art-mount" class="art-video-mount" hidden></div>
+        <div class="player-tip" id="player-tip" hidden></div>
         <div class="video-embed-wrap" id="video-embed-wrap"{{ if !cur.Embed }} hidden{{ end }}>
             <iframe id="video-frame"{{ if cur.Embed }} src="{{ cur.URL }}"{{ end }} allowfullscreen loading="lazy"
                 referrerpolicy="no-referrer" title="{{ Data.Title }}"></iframe>
@@ -52,30 +51,254 @@
 {{ if len(Data.VideoList) > 0 }}
 <script>
 (function () {
+    var pwrap = document.getElementById('video-player-wrap');
     var player = document.getElementById('video-player');
-    var wrap = document.getElementById('video-embed-wrap');
+    var mount = document.getElementById('art-mount');
+    var ewrap = document.getElementById('video-embed-wrap');
     var frame = document.getElementById('video-frame');
     var openLink = document.getElementById('video-open-link');
+    var tip = document.getElementById('player-tip');
     var items = document.querySelectorAll('.episode-item');
+    if (!pwrap || !player || !mount) return;
+
+    var articleId = pwrap.getAttribute('data-article-id') || '';
+    var poster = player.getAttribute('poster') || '';
+    var art = null;      // ArtPlayer 实例（直链通道接管后）
+    var hls = null;      // Hls 实例（m3u8 专用）
+    var curIdx = 0;      // 当前集下标
+    var pendingSeek = 0; // 换源后待恢复的进度
+    var saveTimer = 0;
+    var activeBtn = null;
+    var scriptCache = {};
+
+    function isHls(u) { return /\.m3u8(\?|#|$)/i.test(u || ''); }
+    function idxOf(btn) { return parseInt(btn.getAttribute('data-idx'), 10) || 0; }
+    function showTip(msg) { if (tip) { tip.textContent = msg; tip.hidden = false; } }
+    function hideTip() { if (tip) tip.hidden = true; }
+
+    // 按需加载本地 vendor 脚本（同源文件，失败可重试；Promise 按地址缓存）
+    function loadScript(src) {
+        if (!scriptCache[src]) {
+            scriptCache[src] = new Promise(function (resolve, reject) {
+                var s = document.createElement('script');
+                s.src = src;
+                s.async = true;
+                s.onload = function () { resolve(); };
+                s.onerror = function () { delete scriptCache[src]; reject(new Error('script load failed: ' + src)); };
+                document.head.appendChild(s);
+            });
+        }
+        return scriptCache[src];
+    }
+    function ensureLib(needHls) {
+        var p = window.Artplayer ? Promise.resolve() : loadScript('/vendor/artplayer.js');
+        if (needHls && !window.Hls) p = p.then(function () { return loadScript('/vendor/hls.min.js'); });
+        return p;
+    }
+    function destroyHls() {
+        if (hls) { try { hls.destroy(); } catch (e) { } hls = null; }
+    }
+
+    // ===== 断点续播 / 偏好记忆 =====
+    function pkey(idx) { return 'wolves-vp:' + articleId + ':' + idx; }
+    function saveProgress() {
+        try {
+            var t = art ? art.currentTime : player.currentTime;
+            var d = art ? art.duration : player.duration;
+            if (!d || !isFinite(d) || t < 5) return;
+            localStorage.setItem(pkey(curIdx), JSON.stringify({ t: t, d: d }));
+        } catch (e) { }
+    }
+    function clearProgress(idx) { try { localStorage.removeItem(pkey(idx)); } catch (e) { } }
+    function resumeAt(idx) {
+        try {
+            var v = JSON.parse(localStorage.getItem(pkey(idx)) || 'null');
+            if (v && v.t > 8 && v.d && v.t < v.d - 15) return v.t;
+        } catch (e) { }
+        return 0;
+    }
+    function savedRate() { var r = parseFloat(localStorage.getItem('wolves-vp:rate')); return isFinite(r) && r > 0 ? r : 1; }
+    function savedVolume() { var v = parseFloat(localStorage.getItem('wolves-vp:volume')); return isFinite(v) && v >= 0 && v <= 1 ? v : 0.7; }
+    function autoNextOn() { return localStorage.getItem('wolves-vp:autoplay-next') !== '0'; }
+
+    // ===== m3u8 附加（ArtPlayer customType 回调，换源时会再次触发）=====
+    function attachHls(video, url) {
+        ensureLib(true).then(function () {
+            if (!window.Hls) { video.src = url; return; } // hls.js 加载失败回退原生（仅 Safari 可播）
+            destroyHls();
+            if (window.Hls.isSupported()) {
+                hls = new window.Hls({ maxBufferLength: 30 });
+                hls.on(window.Hls.Events.ERROR, function (evt, data) {
+                    if (!data || !data.fatal) return;
+                    if (art) art.notice.show = '播放失败（' + data.details + '），可尝试其他线路或集数';
+                    else showTip('视频流加载失败：' + data.details);
+                });
+                hls.loadSource(url);
+                hls.attachMedia(video);
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url; // iOS/Safari 原生 HLS
+            } else {
+                showTip('当前浏览器不支持 m3u8 播放，请更换浏览器');
+            }
+        }).catch(function () { video.src = url; });
+    }
+
+    // ===== ArtPlayer 接管直链通道 =====
+    function createArt(url) {
+        var t = player.currentTime > 1 ? player.currentTime : 0;
+        try { player.pause(); player.removeAttribute('src'); player.load(); } catch (e) { } // 停掉 SSR 原生视频防双声
+        player.hidden = true;
+        mount.hidden = false;
+        hideTip();
+        pendingSeek = t > 1 ? t : resumeAt(curIdx);
+        art = new window.Artplayer({
+            container: mount,
+            url: url,
+            type: isHls(url) ? 'm3u8' : '',
+            customType: { m3u8: attachHls },
+            poster: poster,
+            theme: '#e11d48',
+            lang: (document.documentElement.lang || 'zh').toLowerCase().indexOf('zh') === 0 ? 'zh-cn' : 'en',
+            volume: savedVolume(),
+            speed: true,
+            setting: true,
+            hotkey: true,
+            pip: true,
+            fullscreen: true,
+            fullscreenWeb: true,
+            mutex: true,
+            playsInline: true,
+            settings: [{
+                html: '自动连播',
+                tooltip: autoNextOn() ? '开启' : '关闭',
+                switch: autoNextOn(),
+                onSwitch: function (item) {
+                    var on = !item.switch;
+                    try { localStorage.setItem('wolves-vp:autoplay-next', on ? '1' : '0'); } catch (e) { }
+                    item.tooltip = on ? '开启' : '关闭';
+                    return on;
+                }
+            }]
+        });
+        art.on('video:loadedmetadata', function () {
+            art.playbackRate = savedRate();
+            if (pendingSeek > 0) {
+                var s = pendingSeek;
+                pendingSeek = 0;
+                art.currentTime = s;
+                art.notice.show = '已恢复到上次进度';
+            }
+        });
+        art.on('video:timeupdate', function () {
+            if (saveTimer) return;
+            saveTimer = setTimeout(function () { saveTimer = 0; saveProgress(); }, 5000);
+        });
+        art.on('video:ended', function () {
+            clearProgress(curIdx);
+            if (!autoNextOn()) return;
+            var next = document.querySelector('.episode-item[data-idx="' + (curIdx + 1) + '"]');
+            if (next) next.click();
+        });
+        art.on('video:ratechange', function () { try { localStorage.setItem('wolves-vp:rate', String(art.playbackRate)); } catch (e) { } });
+        art.on('video:volumechange', function () { try { localStorage.setItem('wolves-vp:volume', String(art.volume)); } catch (e) { } });
+        art.on('video:error', function () {
+            if (!hls) art.notice.show = '视频加载失败，可尝试其他线路或集数';
+        });
+        art.on('destroy', destroyHls);
+    }
+
+    // ===== 直链切换：ArtPlayer 已接管走 switchUrl，未接管先原生兜底再接管 =====
+    function playDirect(btn, url) {
+        saveProgress();
+        curIdx = idxOf(btn);
+        pendingSeek = resumeAt(curIdx);
+        hideTip();
+        if (ewrap) ewrap.hidden = true;
+        if (frame) frame.removeAttribute('src');
+        if (art) {
+            mount.hidden = false;
+            player.hidden = true;
+            if (!isHls(url)) destroyHls();
+            art.switchUrl(url);
+            art.play();
+            return;
+        }
+        if (window.Artplayer) {
+            createArt(url);
+            art.play();
+            return;
+        }
+        player.hidden = false;
+        mount.hidden = true;
+        player.src = url;
+        var r0 = resumeAt(curIdx);
+        if (r0 > 0) {
+            var onMeta0 = function () {
+                player.removeEventListener('loadedmetadata', onMeta0);
+                try { player.currentTime = r0; } catch (e) { }
+            };
+            player.addEventListener('loadedmetadata', onMeta0);
+        }
+        var p = player.play();
+        if (p && p.catch) p.catch(function () { });
+        ensureLib(isHls(url)).then(function () {
+            if (!art && window.Artplayer && activeBtn === btn) { createArt(url); art.play(); }
+        }).catch(function () {
+            showTip('播放器组件加载失败，当前为浏览器原生播放（m3u8 流可能无法播放）');
+        });
+    }
+
     function activate(btn) {
         items.forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        var url = btn.getAttribute('data-url');
-        var embed = btn.getAttribute('data-embed') === '1';
-        if (embed) {
-            if (player) { player.pause(); player.hidden = true; }
-            if (wrap) wrap.hidden = false;
+        activeBtn = btn;
+        var url = btn.getAttribute('data-url') || '';
+        if (btn.getAttribute('data-embed') === '1') {
+            saveProgress();
+            if (art) art.pause();
+            destroyHls();
+            player.hidden = true;
+            mount.hidden = true;
+            hideTip();
+            if (ewrap) ewrap.hidden = false;
             if (frame) frame.src = url;
             if (openLink) openLink.setAttribute('href', url);
         } else {
-            if (wrap) wrap.hidden = true;
-            if (frame) frame.removeAttribute('src');
-            if (player) { player.hidden = false; player.src = url; player.play(); }
+            playDirect(btn, url);
         }
         var bar = document.querySelector('.episode-bar');
         if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
     items.forEach(function (btn) { btn.addEventListener('click', function () { activate(btn); }); });
+
+    // ===== 初始化：首集为直链则预载库并接管；纯嵌入页不加载任何播放器组件 =====
+    var initUrl = '', initEmbed = false;
+    if (items.length) {
+        initUrl = items[0].getAttribute('data-url') || '';
+        initEmbed = items[0].getAttribute('data-embed') === '1';
+    } else {
+        initUrl = player.getAttribute('src') || '';
+        initEmbed = !initUrl;
+    }
+    if (initUrl && !initEmbed) {
+        ensureLib(isHls(initUrl)).then(function () {
+            if (!art && window.Artplayer) createArt(initUrl);
+        }).catch(function () { /* 保持原生播放 */ });
+    }
+
+    // 原生兜底通道的进度保存与连播（ArtPlayer 接管后该元素已无 src，不会触发）
+    player.addEventListener('timeupdate', function () {
+        if (saveTimer) return;
+        saveTimer = setTimeout(function () { saveTimer = 0; saveProgress(); }, 5000);
+    });
+    player.addEventListener('ended', function () {
+        clearProgress(curIdx);
+        if (!autoNextOn()) return;
+        var next = document.querySelector('.episode-item[data-idx="' + (curIdx + 1) + '"]');
+        if (next) next.click();
+    });
+    window.addEventListener('pagehide', saveProgress);
+    document.addEventListener('visibilitychange', function () { if (document.hidden) saveProgress(); });
 })();
 </script>
 {{ end }}

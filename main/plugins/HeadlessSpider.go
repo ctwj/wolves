@@ -433,9 +433,11 @@ func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {
 	return tasks, nil
 }
 
-// taskStats 任务内累计计数（processLink/processArticle 更新）
+// taskStats 任务内累计计数（processLink/processArticle 更新）；
+// stopTask 为 HttpSpider 的跨页早停标志（stop_when_exists/limit 触发后终止整个任务翻页，mu 保护）
 type taskStats struct {
 	collected, skipped, failed, consecExists int
+	stopTask                                 bool
 }
 
 func (h *HeadlessSpider) runTask(browser *rod.Browser, t *spiderTask) (collected, skipped, failed int) {
