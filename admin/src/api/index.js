@@ -60,6 +60,7 @@ export const pluginRun = (id) => usePost(`/plugin/run/${id}`);
 export const pluginCronStart= (id) => usePost(`/plugin/cron/start/${id}`);
 export const pluginCronStop = (id) => usePost(`/plugin/cron/stop/${id}`);
 export const pluginCronExp = (id,data) => usePost(`/plugin/cron/exp/${id}`, data);
+export const pluginSpiderValidate = (id, task) => usePost(`/plugin/spiderValidate/${id}`, JSON.stringify(task));
 export const pluginLogList = (id,params) => useGetData(`/plugin/log/list/${id}`,params);
 export const pluginPreviewWatermark = (id) => useGetBlob(`/plugin/previewWatermark/${id}`);
 

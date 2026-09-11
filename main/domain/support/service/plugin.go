@@ -281,13 +281,25 @@ func (p *PluginService) GetDirectories(id string, body string) (result interface
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 尝试调用插件的 GetDirectories 方法
 	if getDirectories, ok := item.Entry.(interface{ GetDirectories() ([]interface{}, error) }); ok {
 		return getDirectories.GetDirectories()
 	}
-	
+
 	return nil, errors.New("plugin does not support get directories")
+}
+
+// SpiderValidate 校验爬虫插件的单任务配置：body 为任务 JSON（不入库，仅提取展示）
+func (p *PluginService) SpiderValidate(id string, body string) (result interface{}, err error) {
+	item, err := p.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if validator, ok := item.Entry.(interface{ ValidateTask(raw string) (interface{}, error) }); ok {
+		return validator.ValidateTask(body)
+	}
+	return nil, errors.New("plugin does not support task validation")
 }
 
 // PreviewWatermark 预览水印效果

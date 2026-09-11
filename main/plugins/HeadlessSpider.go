@@ -2,16 +2,12 @@ package plugins
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -357,88 +353,90 @@ func (h *HeadlessSpider) parseTasks() ([]spiderTask, error) {
 		return nil, fmt.Errorf("tasks JSON 解析失败: %w", err)
 	}
 	for i := range tasks {
-		t := &tasks[i]
-		// 配置去首尾空白：后台手填选择器/URL 易带空格（如 "article.read-content "），
-		// 带空格的选择器行为异常且难排查
-		for _, p := range []*string{
-			&t.Name, &t.SourceURL, &t.PageURLPattern, &t.WaitSelector, &t.ListSelector,
-			&t.ListTitleSel, &t.ListCoverSel, &t.ListCoverAttr, &t.ListCoverExtractRegex, &t.ListDescSel,
-			&t.NextPageSel, &t.LinkSelector, &t.LinkAttr, &t.LinkExtractRegex, &t.LinkURLTemplate,
-			&t.TitleSel, &t.TitleAttr, &t.TitleExtractRegex,
-			&t.CoverSel, &t.CoverAttr, &t.CoverExtractRegex,
-			&t.ContentSel, &t.ContentExtractRegex, &t.ContentNextSel,
-			&t.KeywordsSel, &t.KeywordsAttr, &t.KeywordsExtractRegex,
-			&t.PublishTimeSel, &t.PublishTimeAttr, &t.PublishTimeExtractRegex,
-			&t.VideoSrcSel, &t.VideoAttr, &t.VideoExtractRegex,
-			&t.VideoIframeSel, &t.VideoIframeAttr, &t.VideoIframeExtractRegex,
-			&t.VideoLabelSel, &t.VideoLabelAttr, &t.GallerySel, &t.GalleryAttr, &t.GalleryExtractRegex,
-		} {
-			*p = strings.TrimSpace(*p)
-		}
-		for j := range t.Extra {
-			t.Extra[j].Key = strings.TrimSpace(t.Extra[j].Key)
-			t.Extra[j].Selector = strings.TrimSpace(t.Extra[j].Selector)
-			t.Extra[j].Regex = strings.TrimSpace(t.Extra[j].Regex)
-		}
-		if t.MaxPages <= 0 {
-			if t.NextPageSel != "" {
-				t.MaxPages = 50 // 按钮翻页模式不填则给安全上限
-			} else {
-				t.MaxPages = 1
-			}
-		}
-		if t.Mode == "" {
-			t.Mode = "detail"
-		}
-		if t.Mode != "detail" && t.Mode != "list" {
-			return nil, fmt.Errorf("任务[%d]%s mode 无效（仅支持 detail/list）: %q", i+1, t.Name, t.Mode)
-		}
-		if t.SourceURL == "" || t.ListSelector == "" {
-			return nil, fmt.Errorf("任务[%d]%s 缺少 source_url 或 list_selector", i+1, t.Name)
-		}
-		if t.LinkMode != "" && t.LinkMode != "href" && t.LinkMode != "click" {
-			return nil, fmt.Errorf("任务[%d]%s link_mode 无效（仅支持 href/click）: %q", i+1, t.Name, t.LinkMode)
-		}
-		if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
-			return nil, fmt.Errorf("任务[%d]%s dedup_by 无效（仅支持 url/url_title）: %q", i+1, t.Name, t.DedupBy)
-		}
-		if t.ClickWaitMs <= 0 {
-			t.ClickWaitMs = 250
-		}
-		for field, pattern := range map[string]string{
-			"link_extract_regex":         t.LinkExtractRegex,
-			"title_extract_regex":        t.TitleExtractRegex,
-			"cover_extract_regex":        t.CoverExtractRegex,
-			"list_cover_extract_regex":   t.ListCoverExtractRegex,
-			"content_extract_regex":      t.ContentExtractRegex,
-			"keywords_extract_regex":     t.KeywordsExtractRegex,
-			"publish_time_extract_regex": t.PublishTimeExtractRegex,
-			"video_extract_regex":        t.VideoExtractRegex,
-			"video_iframe_extract_regex": t.VideoIframeExtractRegex,
-			"gallery_extract_regex":      t.GalleryExtractRegex,
-		} {
-			if _, err := compileExtractRegex(pattern); err != nil {
-				return nil, fmt.Errorf("任务[%d]%s %s 无效: %w", i+1, t.Name, field, err)
-			}
-		}
-		for j := range t.Extra {
-			if _, err := compileExtractRegex(t.Extra[j].Regex); err != nil {
-				return nil, fmt.Errorf("任务[%d]%s extra[%d]%s regex 无效: %w", i+1, t.Name, j, t.Extra[j].Key, err)
-			}
-		}
-		if _, err := parseCookies(t.Cookies, ""); err != nil {
-			return nil, fmt.Errorf("任务[%d]%s %w", i+1, t.Name, err)
+		if err := normalizeSpiderTask(&tasks[i], fmt.Sprintf("任务[%d]", i+1)); err != nil {
+			return nil, err
 		}
 	}
 	return tasks, nil
 }
 
-// taskStats 任务内累计计数（processLink/processArticle 更新）；
-// stopTask 为 HttpSpider 的跨页早停标志（stop_when_exists/limit 触发后终止整个任务翻页，mu 保护）
-type taskStats struct {
-	collected, skipped, failed, consecExists int
-	stopTask                                 bool
+// normalizeSpiderTask 单任务清洗与校验（parseTasks 与 ValidateTask 共用）
+func normalizeSpiderTask(t *spiderTask, label string) error {
+	// 配置去首尾空白：后台手填选择器/URL 易带空格（如 "article.read-content "），
+	// 带空格的选择器行为异常且难排查
+	for _, p := range []*string{
+		&t.Name, &t.SourceURL, &t.PageURLPattern, &t.WaitSelector, &t.ListSelector,
+		&t.ListTitleSel, &t.ListCoverSel, &t.ListCoverAttr, &t.ListCoverExtractRegex, &t.ListDescSel,
+		&t.NextPageSel, &t.LinkSelector, &t.LinkAttr, &t.LinkExtractRegex, &t.LinkURLTemplate,
+		&t.TitleSel, &t.TitleAttr, &t.TitleExtractRegex,
+		&t.CoverSel, &t.CoverAttr, &t.CoverExtractRegex,
+		&t.ContentSel, &t.ContentExtractRegex, &t.ContentNextSel,
+		&t.KeywordsSel, &t.KeywordsAttr, &t.KeywordsExtractRegex,
+		&t.PublishTimeSel, &t.PublishTimeAttr, &t.PublishTimeExtractRegex,
+		&t.VideoSrcSel, &t.VideoAttr, &t.VideoExtractRegex,
+		&t.VideoIframeSel, &t.VideoIframeAttr, &t.VideoIframeExtractRegex,
+		&t.VideoLabelSel, &t.VideoLabelAttr, &t.GallerySel, &t.GalleryAttr, &t.GalleryExtractRegex,
+	} {
+		*p = strings.TrimSpace(*p)
+	}
+	for j := range t.Extra {
+		t.Extra[j].Key = strings.TrimSpace(t.Extra[j].Key)
+		t.Extra[j].Selector = strings.TrimSpace(t.Extra[j].Selector)
+		t.Extra[j].Regex = strings.TrimSpace(t.Extra[j].Regex)
+	}
+	if t.MaxPages <= 0 {
+		if t.NextPageSel != "" {
+			t.MaxPages = 50 // 按钮翻页模式不填则给安全上限
+		} else {
+			t.MaxPages = 1
+		}
+	}
+	if t.Mode == "" {
+		t.Mode = "detail"
+	}
+	if t.Mode != "detail" && t.Mode != "list" {
+		return fmt.Errorf("%s%s mode 无效（仅支持 detail/list）: %q", label, t.Name, t.Mode)
+	}
+	if t.SourceURL == "" || t.ListSelector == "" {
+		return fmt.Errorf("%s%s 缺少 source_url 或 list_selector", label, t.Name)
+	}
+	if t.LinkMode != "" && t.LinkMode != "href" && t.LinkMode != "click" {
+		return fmt.Errorf("%s%s link_mode 无效（仅支持 href/click）: %q", label, t.Name, t.LinkMode)
+	}
+	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
+		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title）: %q", label, t.Name, t.DedupBy)
+	}
+	if t.ClickWaitMs <= 0 {
+		t.ClickWaitMs = 250
+	}
+	for field, pattern := range map[string]string{
+		"link_extract_regex":         t.LinkExtractRegex,
+		"title_extract_regex":        t.TitleExtractRegex,
+		"cover_extract_regex":        t.CoverExtractRegex,
+		"list_cover_extract_regex":   t.ListCoverExtractRegex,
+		"content_extract_regex":      t.ContentExtractRegex,
+		"keywords_extract_regex":     t.KeywordsExtractRegex,
+		"publish_time_extract_regex": t.PublishTimeExtractRegex,
+		"video_extract_regex":        t.VideoExtractRegex,
+		"video_iframe_extract_regex": t.VideoIframeExtractRegex,
+		"gallery_extract_regex":      t.GalleryExtractRegex,
+	} {
+		if _, err := compileExtractRegex(pattern); err != nil {
+			return fmt.Errorf("%s%s %s 无效: %w", label, t.Name, field, err)
+		}
+	}
+	for j := range t.Extra {
+		if _, err := compileExtractRegex(t.Extra[j].Regex); err != nil {
+			return fmt.Errorf("%s%s extra[%d]%s regex 无效: %w", label, t.Name, j, t.Extra[j].Key, err)
+		}
+	}
+	if _, err := parseCookies(t.Cookies, ""); err != nil {
+		return fmt.Errorf("%s%s %w", label, t.Name, err)
+	}
+	return nil
 }
+
+// taskStats / 正则与链接过滤等共用逻辑见 spiderCommon.go（HttpSpider 同模型复用）
 
 func (h *HeadlessSpider) runTask(browser *rod.Browser, t *spiderTask) (collected, skipped, failed int) {
 	st := &taskStats{}
@@ -1107,46 +1105,7 @@ func (t *spiderTask) coverValue(el *rod.Element) string {
 	return applyExtractRegex(t.CoverExtractRegex, v)
 }
 
-// buildLinkURL 按 link_url_template 生成最终 URL：
-// 含 {value} 占位则替换为属性值，否则视为前缀直接拼接；模板为空原样返回
-func buildLinkURL(template, value string) string {
-	if template == "" {
-		return value
-	}
-	if strings.Contains(template, "{value}") {
-		return strings.ReplaceAll(template, "{value}", value)
-	}
-	return template + value
-}
-
-// compileExtractRegex 编译抽取正则（link/cover/gallery/extra 的 *_extract_regex、regex 共用）；
-// 兼容 /re/ 包裹写法（与 link_include 过滤约定一致）
-func compileExtractRegex(pattern string) (*regexp.Regexp, error) {
-	if len(pattern) > 2 && strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
-		pattern = pattern[1 : len(pattern)-1]
-	}
-	return regexp.Compile(pattern)
-}
-
-// applyExtractRegex 从属性/文本值中抽取目标：pattern 空=原样返回（仅去空白）；
-// 取第一个捕获组，无捕获组取整段匹配；未命中或正则非法返回空串
-func applyExtractRegex(pattern, value string) string {
-	if pattern == "" {
-		return strings.TrimSpace(value)
-	}
-	re, err := compileExtractRegex(pattern)
-	if err != nil {
-		return ""
-	}
-	m := re.FindStringSubmatch(value)
-	if m == nil {
-		return ""
-	}
-	if len(m) > 1 {
-		return strings.TrimSpace(m[1])
-	}
-	return strings.TrimSpace(m[0])
-}
+// buildLinkURL / compileExtractRegex / applyExtractRegex 等共用提取逻辑见 spiderCommon.go
 
 // extractLinksByClick 点击拦截模式：劫持 window.open（只记录不真开新窗），对 list_selector
 // 匹配的元素逐个派发 click（含元素内的 a/button，选择器填条目容器或可点元素均可），
@@ -1330,52 +1289,41 @@ func (h *HeadlessSpider) extractListArticles(page *rod.Page, t *spiderTask, base
 	return articles
 }
 
-// matchFilter 链接过滤：include 为空=放行；include/exclude 支持子串或 /正则/ 形式
-func matchFilter(link, include, exclude string) bool {
-	if include != "" && !matchOne(link, include) {
-		return false
-	}
-	if exclude != "" && matchOne(link, exclude) {
-		return false
-	}
-	return true
-}
-
-func matchOne(s, pattern string) bool {
-	if len(pattern) > 2 && strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
-		if re, err := regexp.Compile(pattern[1 : len(pattern)-1]); err == nil {
-			return re.MatchString(s)
-		}
-	}
-	return strings.Contains(s, pattern)
-}
-
-// sameSite 判断两个 host 是否同一站点：忽略 www. 前缀，允许子域互认
-// （example.tv 与 www.example.tv / m.example.tv 视为同源）
-func sameSite(a, b string) bool {
-	a, b = strings.ToLower(strings.TrimPrefix(a, "www.")), strings.ToLower(strings.TrimPrefix(b, "www."))
-	return a == b || strings.HasSuffix(a, "."+b) || strings.HasSuffix(b, "."+a)
-}
+// matchFilter / matchOne 链接过滤共用逻辑见 spiderCommon.go
 
 // fetchArticle 打开详情页提取字段并构造文章（已存在则返回 nil）
-func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link string) (article *entity.Article, err error) {
-	page, err := h.newPage(browser, t)
+func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link string) (*entity.Article, error) {
+	page, cleanup, navStart, err := h.openDetailPage(browser, t, link)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
+	article, _, err := h.extractArticleOnPage(page, t, link, false, navStart)
+	cleanup(err)
+	return article, err
+}
+
+// openDetailPage 新建页面并导航到详情页、等待就绪（渲染等待元素/DOM 稳定）；
+// cleanup 在提取结束后调用（err 非零时保存失败现场截图）；navStart 回传给提取日志计耗时
+func (h *HeadlessSpider) openDetailPage(browser *rod.Browser, t *spiderTask, link string) (page *rod.Page, cleanup func(error), navStart time.Time, err error) {
+	navStart = time.Now()
+	page, err = h.newPage(browser, t)
+	if err != nil {
+		return nil, nil, navStart, err
+	}
+	cleanup = func(err error) {
 		if err != nil {
 			h.saveDebugShot(page, t, "detail_error")
 		}
 		closePage(page)
-	}()
-	navStart := time.Now()
-	if err := page.Navigate(link); err != nil {
-		return nil, fmt.Errorf("导航 %s 失败（耗时 %s）: %w", link, time.Since(navStart).Round(time.Millisecond), err)
+	}
+	if err = page.Navigate(link); err != nil {
+		cleanup(err)
+		return nil, nil, navStart, fmt.Errorf("导航 %s 失败（耗时 %s）: %w", link, time.Since(navStart).Round(time.Millisecond), err)
 	}
 	loadStart := time.Now()
-	if err := page.WaitLoad(); err != nil {
-		return nil, fmt.Errorf("详情页 %s 加载超时（WaitLoad，已等 %s）: %w", link, time.Since(loadStart).Round(time.Millisecond), err)
+	if err = page.WaitLoad(); err != nil {
+		cleanup(err)
+		return nil, nil, navStart, fmt.Errorf("详情页 %s 加载超时（WaitLoad，已等 %s）: %w", link, time.Since(loadStart).Round(time.Millisecond), err)
 	}
 	if t.WaitSelector != "" {
 		// 封顶等待：选择器配错时不让它吃光整页预算（超时不致命）。
@@ -1386,7 +1334,12 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 		// 同 openPage：广告页 DOM 永不稳定会耗干整页预算，封顶 10s 尽力而为
 		_ = page.Timeout(fieldWait).WaitStable(time.Second * 2)
 	}
-	var missed []string // 未命中的字段选择器（提取结束时汇总输出）
+	return page, cleanup, navStart, nil
+}
+
+// extractArticleOnPage 在已就绪的详情页上提取字段并构造文章（不入库）；
+// skipDedup=true 供任务校验（已入库文章也照样提取）；missed 返回未命中的字段选择器
+func (h *HeadlessSpider) extractArticleOnPage(page *rod.Page, t *spiderTask, link string, skipDedup bool, navStart time.Time) (article *entity.Article, missed []string, err error) {
 
 	// 标题：title_sel + title_attr/title_extract_regex（统一提取模型），回退 <title>
 	title := ""
@@ -1402,17 +1355,19 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 	}
 	if title == "" {
 		err = fmt.Errorf("标题提取失败（核对 title_sel）")
-		return nil, err
+		return nil, nil, err
 	}
 
 	slug := t.dedupSlug(link, title)
-	exists, err := service.Article.ExistsSlug(slug)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		h.ctx.Log.Debug("文章已存在，跳过", zap.String("slug", slug))
-		return nil, nil
+	if !skipDedup {
+		exists, err := service.Article.ExistsSlug(slug)
+		if err != nil {
+			return nil, nil, err
+		}
+		if exists {
+			h.ctx.Log.Debug("文章已存在，跳过", zap.String("slug", slug))
+			return nil, nil, nil
+		}
 	}
 
 	// 正文最先提取（最关键字段先用预算；此前放在最后，前面的字段选择器等超时会把它饿死）
@@ -1577,7 +1532,7 @@ func (h *HeadlessSpider) fetchArticle(browser *rod.Browser, t *spiderTask, link 
 		zap.Strings("missed", missed),
 		zap.Duration("cost", time.Since(navStart).Round(time.Millisecond)),
 		zap.Duration("budget_left", budgetLeft(page)))
-	return item, nil
+	return item, missed, nil
 }
 
 // containsStr 小工具：判断切片是否含指定字符串
@@ -1691,11 +1646,8 @@ func (t *spiderTask) listCoverAttr() string {
 	return "src"
 }
 
-// hashSlug 以 源URL+标题 生成稳定去重 slug（多源防冲突）
-func hashSlug(link, title string) string {
-	sum := sha1.Sum([]byte(strings.TrimSpace(link) + "|" + strings.TrimSpace(title)))
-	return hex.EncodeToString(sum[:8])
-}
+// hashSlug / dedup 键与文章构建辅助（truncateRunes/sanitizeFilename/buildVideoSources/
+// parsePublishTime/plainSummary）见 spiderCommon.go
 
 // dedupSlug 去重键：默认（含 url_title）= 源URL+标题 哈希；"url" = 仅源 URL 哈希
 // （站点标题微调不会重复入库；注意切换 dedup_by 后既有文章会按新键被重新采集）
@@ -1704,68 +1656,6 @@ func (t *spiderTask) dedupSlug(link, title string) string {
 		return hashSlug(link, "")
 	}
 	return hashSlug(link, title)
-}
-
-// truncateRunes 按 rune 截断到 n 长度（数据库字段长度保护）
-func truncateRunes(s string, n int) string {
-	rs := []rune(strings.TrimSpace(s))
-	if len(rs) > n {
-		return string(rs[:n])
-	}
-	return string(rs)
-}
-
-// sanitizeFilename 文件名替换路径分隔与空白等字符
-func sanitizeFilename(s string) string {
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ', '\t':
-			return '_'
-		}
-		return r
-	}, s)
-}
-
-// buildVideoSources 组装 video_sources：labels 与 srcs 按下标对应（空/缺失回退「第NN集」，
-// 编号含 idxOffset 以跨直链/iframe 通道连续）；embed=true 标记第三方 iframe 播放页
-func buildVideoSources(srcs, labels []string, embed bool, idxOffset int) []map[string]any {
-	sources := make([]map[string]any, 0, len(srcs))
-	for i, src := range srcs {
-		label := ""
-		if i < len(labels) {
-			label = strings.TrimSpace(labels[i])
-		}
-		if label == "" {
-			label = fmt.Sprintf("第%02d集", idxOffset+i+1)
-		}
-		sources = append(sources, map[string]any{"label": label, "url": src, "embed": embed})
-	}
-	return sources
-}
-
-// parsePublishTime 从任意文本抽取日期时间转 unix 秒：支持 2024-05-01 12:30:45 / 2024/5/1 /
-// 2024.05.01 / 2024年5月1日(08:05) 等；时区按服务器本地（排序/sitemap 用，不追求绝对时区精确）；
-// 解析失败返回 0
-var publishDateRegexp = regexp.MustCompile(`(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})日?(?:[\sTt]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?`)
-
-func parsePublishTime(s string) int64 {
-	m := publishDateRegexp.FindStringSubmatch(s)
-	if m == nil {
-		return 0
-	}
-	num := func(i int) int {
-		v, _ := strconv.Atoi(m[i])
-		return v
-	}
-	y, mo, d, hh, mm, ss := num(1), num(2), num(3), num(4), num(5), num(6)
-	if y < 1990 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31 || hh > 23 || mm > 59 || ss > 59 {
-		return 0
-	}
-	t := time.Date(y, time.Month(mo), d, hh, mm, ss, 0, time.Local)
-	if t.Year() != y || int(t.Month()) != mo || t.Day() != d {
-		return 0 // 归一化失败（如 2 月 30 日）
-	}
-	return t.Unix()
 }
 
 // parseCookies 解析任务 cookies 配置：JSON 数组 [{"name":"..","value":"..","domain":"..","path":".."}]，
@@ -1824,17 +1714,71 @@ func (h *HeadlessSpider) saveDebugShot(page *rod.Page, t *spiderTask, tag string
 	}
 }
 
-var htmlTagRegexp = regexp.MustCompile(`<[^>]+>`)
-var whitespaceRegexp = regexp.MustCompile(`\s+`)
-
-// plainSummary 去标签截取摘要
-func plainSummary(html string, n int) string {
-	s := htmlTagRegexp.ReplaceAllString(html, "")
-	s = whitespaceRegexp.ReplaceAllString(s, " ")
-	s = strings.TrimSpace(s)
-	runes := []rune(s)
-	if len(runes) > n {
-		return string(runes[:n])
+// ValidateTask 任务校验（不入库）：启动浏览器 → 抓列表页第一页 → 取第一条链接 →
+// 提取文章字段并返回结构化结果。供 PluginService.SpiderValidate 接口调用；
+// skipDedup 跳过判重短路，已入库文章也照样提取
+func (h *HeadlessSpider) ValidateTask(raw string) (interface{}, error) {
+	var t spiderTask
+	if err := validateUnmarshalTask(raw, &t); err != nil {
+		return nil, err
 	}
-	return s
+	if err := normalizeSpiderTask(&t, "任务"); err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	res := newValidateResult("HeadlessSpider", t.Name, t.SourceURL)
+	defer func() { res.CostMS = time.Since(start).Milliseconds() }()
+
+	if t.Mode == "list" {
+		res.Error = "list 模式（列表页直接入库）无详情页字段可校验，请切换为 detail 模式验证"
+		return res, nil
+	}
+
+	browser, err := h.launchBrowser()
+	if err != nil {
+		res.Error = fmt.Sprintf("浏览器启动失败: %v%s", err, browserLaunchHint(err))
+		return res, nil
+	}
+	defer func() { _ = browser.Close() }()
+
+	page, err := h.newPage(browser, &t)
+	if err != nil {
+		res.Error = fmt.Sprintf("页面创建失败: %v", err)
+		return res, nil
+	}
+	defer closePage(page)
+	if err := h.openPage(page, &t, t.SourceURL); err != nil {
+		h.saveDebugShot(page, &t, "validate_list_error")
+		res.Error = fmt.Sprintf("列表页打开失败: %v", err)
+		return res, nil
+	}
+	base, _ := pageInfo(page, t.SourceURL)
+	links, lerr := h.linksOnPage(page, &t, base)
+	if lerr != nil {
+		res.Error = fmt.Sprintf("列表页链接提取失败: %v", lerr)
+		return res, nil
+	}
+	res.LinksFound = len(links)
+	if len(links) == 0 {
+		res.Error = "列表页未提取到链接：核对「详情链接选择器」、链接过滤（只保留/排除）与取链属性通道/取链方式"
+		return res, nil
+	}
+	res.SampleLinks = validateSampleLinks(5, func(i int) ValidateLink {
+		return ValidateLink{URL: links[i].URL, Title: links[i].Title}
+	})
+	res.FirstLink = res.SampleLinks[0]
+
+	detailPage, cleanup, navStart, err := h.openDetailPage(browser, &t, links[0].URL)
+	if err != nil {
+		res.Error = fmt.Sprintf("详情页打开失败: %v", err)
+		return res, nil
+	}
+	article, missed, err := h.extractArticleOnPage(detailPage, &t, links[0].URL, true, navStart)
+	cleanup(err)
+	if err != nil {
+		res.Error = fmt.Sprintf("详情页提取失败: %v", err)
+		return res, nil
+	}
+	res.Article = articleToValidate(article, missed)
+	return res, nil
 }

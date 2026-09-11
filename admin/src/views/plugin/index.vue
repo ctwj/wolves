@@ -54,7 +54,7 @@
 
   </a-table>
 
-  <a-modal v-model:visible="visibleOptions" :title="modalTitle" :width="600" title-align="start" @ok="runSaveOptions(currentID,currentOptionsData)" :ok-loading="loadingSaveOptions">
+  <a-modal v-model:visible="visibleOptions" :title="modalTitle" :width="optionsWidth" title-align="start" @ok="runSaveOptions(currentID,currentOptionsData)" :ok-loading="loadingSaveOptions">
     <a-skeleton animation :widths="[80]" v-if="loadingGetOptions">
       <a-space direction="vertical" :style="{width:'100%'}" size="large">
         <a-skeleton-line :rows="5" />
@@ -107,6 +107,11 @@
   const modalTitle = computed(()=>{
     if(!currentID.value) return
     return t(currentID.value)
+  })
+  // 配置项多的插件（爬虫类）用宽弹窗，其余保持默认 600，避免长表单在小宽度下换行局促
+  const optionsWidth = computed(()=>{
+    if (store.isMobile) return '100%'
+    return ['HttpSpider', 'HeadlessSpider'].includes(currentID.value) ? 960 : 600
   })
 
 

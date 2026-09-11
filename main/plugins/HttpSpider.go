@@ -355,89 +355,96 @@ func (h *HttpSpider) parseTasks() ([]httpTask, error) {
 		return nil, fmt.Errorf("tasks JSON 解析失败: %w", err)
 	}
 	for i := range tasks {
-		t := &tasks[i]
-		for _, p := range []*string{
-			&t.Name, &t.SourceURL, &t.PageURLPattern, &t.ListSelector, &t.LinkInclude, &t.LinkExclude,
-			&t.NextPageSel, &t.ListTitleSel, &t.ListCoverSel, &t.ListCoverAttr, &t.ListCoverExtractRegex, &t.ListDescSel,
-			&t.LinkSelector, &t.LinkAttr, &t.LinkExtractRegex, &t.LinkURLTemplate,
-			&t.TitleSel, &t.TitleAttr, &t.TitleExtractRegex,
-			&t.CoverSel, &t.CoverAttr, &t.CoverExtractRegex,
-			&t.ContentSel, &t.ContentExtractRegex, &t.ContentNextSel,
-			&t.KeywordsSel, &t.KeywordsAttr, &t.KeywordsExtractRegex,
-			&t.PublishTimeSel, &t.PublishTimeAttr, &t.PublishTimeExtractRegex,
-			&t.VideoSrcSel, &t.VideoAttr, &t.VideoExtractRegex,
-			&t.VideoIframeSel, &t.VideoIframeAttr, &t.VideoIframeExtractRegex,
-			&t.VideoLabelSel, &t.VideoLabelAttr, &t.GallerySel, &t.GalleryAttr, &t.GalleryExtractRegex,
-			&t.ContentType, &t.UserAgent, &t.Headers, &t.Cookies, &t.Encoding, &t.DedupBy,
-		} {
-			*p = strings.TrimSpace(*p)
-		}
-		for j := range t.Extra {
-			t.Extra[j].Key = strings.TrimSpace(t.Extra[j].Key)
-			t.Extra[j].Selector = strings.TrimSpace(t.Extra[j].Selector)
-			t.Extra[j].Regex = strings.TrimSpace(t.Extra[j].Regex)
-		}
-		if t.MaxPages <= 0 {
-			if t.NextPageSel != "" {
-				t.MaxPages = 50 // 按钮翻页模式不填则给安全上限
-			} else {
-				t.MaxPages = 1
-			}
-		}
-		if t.Mode == "" {
-			t.Mode = "detail"
-		}
-		if t.Mode != "detail" && t.Mode != "list" {
-			return nil, fmt.Errorf("任务[%d]%s mode 无效（仅支持 detail/list）: %q", i+1, t.Name, t.Mode)
-		}
-		if t.SourceURL == "" || t.ListSelector == "" {
-			return nil, fmt.Errorf("任务[%d]%s 缺少 source_url 或 list_selector", i+1, t.Name)
-		}
-		if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
-			return nil, fmt.Errorf("任务[%d]%s dedup_by 无效（仅支持 url/url_title）: %q", i+1, t.Name, t.DedupBy)
-		}
-		for field, pattern := range map[string]string{
-			"link_extract_regex":         t.LinkExtractRegex,
-			"title_extract_regex":        t.TitleExtractRegex,
-			"cover_extract_regex":        t.CoverExtractRegex,
-			"list_cover_extract_regex":   t.ListCoverExtractRegex,
-			"content_extract_regex":      t.ContentExtractRegex,
-			"keywords_extract_regex":     t.KeywordsExtractRegex,
-			"publish_time_extract_regex": t.PublishTimeExtractRegex,
-			"video_extract_regex":        t.VideoExtractRegex,
-			"video_iframe_extract_regex": t.VideoIframeExtractRegex,
-			"gallery_extract_regex":      t.GalleryExtractRegex,
-		} {
-			if _, err := compileExtractRegex(pattern); err != nil {
-				return nil, fmt.Errorf("任务[%d]%s %s 无效: %w", i+1, t.Name, field, err)
-			}
-		}
-		for j := range t.Extra {
-			if _, err := compileExtractRegex(t.Extra[j].Regex); err != nil {
-				return nil, fmt.Errorf("任务[%d]%s extra[%d]%s regex 无效: %w", i+1, t.Name, j, t.Extra[j].Key, err)
-			}
-		}
-		// link_include/link_exclude 按 matchOne 约定：/re/ 包裹为正则（解析期校验语法），其余按子串匹配不校验
-		for field, pattern := range map[string]string{
-			"link_include": t.LinkInclude,
-			"link_exclude": t.LinkExclude,
-		} {
-			if len(pattern) > 2 && strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
-				if _, err := regexp.Compile(pattern[1 : len(pattern)-1]); err != nil {
-					return nil, fmt.Errorf("任务[%d]%s %s 正则无效: %w", i+1, t.Name, field, err)
-				}
-			}
-		}
-		if _, err := parseHeaders(t.Headers); err != nil {
-			return nil, fmt.Errorf("任务[%d]%s %w", i+1, t.Name, err)
-		}
-		if t.Encoding != "" {
-			if _, name := charset.Lookup(t.Encoding); name == "" {
-				return nil, fmt.Errorf("任务[%d]%s encoding 无效: %q", i+1, t.Name, t.Encoding)
-			}
+		if err := normalizeHTTPTask(&tasks[i], fmt.Sprintf("任务[%d]", i+1)); err != nil {
+			return nil, err
 		}
 	}
 	return tasks, nil
+}
+
+// normalizeHTTPTask 单任务清洗与校验（parseTasks 与 ValidateTask 共用）
+func normalizeHTTPTask(t *httpTask, label string) error {
+	for _, p := range []*string{
+		&t.Name, &t.SourceURL, &t.PageURLPattern, &t.ListSelector, &t.LinkInclude, &t.LinkExclude,
+		&t.NextPageSel, &t.ListTitleSel, &t.ListCoverSel, &t.ListCoverAttr, &t.ListCoverExtractRegex, &t.ListDescSel,
+		&t.LinkSelector, &t.LinkAttr, &t.LinkExtractRegex, &t.LinkURLTemplate,
+		&t.TitleSel, &t.TitleAttr, &t.TitleExtractRegex,
+		&t.CoverSel, &t.CoverAttr, &t.CoverExtractRegex,
+		&t.ContentSel, &t.ContentExtractRegex, &t.ContentNextSel,
+		&t.KeywordsSel, &t.KeywordsAttr, &t.KeywordsExtractRegex,
+		&t.PublishTimeSel, &t.PublishTimeAttr, &t.PublishTimeExtractRegex,
+		&t.VideoSrcSel, &t.VideoAttr, &t.VideoExtractRegex,
+		&t.VideoIframeSel, &t.VideoIframeAttr, &t.VideoIframeExtractRegex,
+		&t.VideoLabelSel, &t.VideoLabelAttr, &t.GallerySel, &t.GalleryAttr, &t.GalleryExtractRegex,
+		&t.ContentType, &t.UserAgent, &t.Headers, &t.Cookies, &t.Encoding, &t.DedupBy,
+	} {
+		*p = strings.TrimSpace(*p)
+	}
+	for j := range t.Extra {
+		t.Extra[j].Key = strings.TrimSpace(t.Extra[j].Key)
+		t.Extra[j].Selector = strings.TrimSpace(t.Extra[j].Selector)
+		t.Extra[j].Regex = strings.TrimSpace(t.Extra[j].Regex)
+	}
+	if t.MaxPages <= 0 {
+		if t.NextPageSel != "" {
+			t.MaxPages = 50 // 按钮翻页模式不填则给安全上限
+		} else {
+			t.MaxPages = 1
+		}
+	}
+	if t.Mode == "" {
+		t.Mode = "detail"
+	}
+	if t.Mode != "detail" && t.Mode != "list" {
+		return fmt.Errorf("%s%s mode 无效（仅支持 detail/list）: %q", label, t.Name, t.Mode)
+	}
+	if t.SourceURL == "" || t.ListSelector == "" {
+		return fmt.Errorf("%s%s 缺少 source_url 或 list_selector", label, t.Name)
+	}
+	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
+		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title）: %q", label, t.Name, t.DedupBy)
+	}
+	for field, pattern := range map[string]string{
+		"link_extract_regex":         t.LinkExtractRegex,
+		"title_extract_regex":        t.TitleExtractRegex,
+		"cover_extract_regex":        t.CoverExtractRegex,
+		"list_cover_extract_regex":   t.ListCoverExtractRegex,
+		"content_extract_regex":      t.ContentExtractRegex,
+		"keywords_extract_regex":     t.KeywordsExtractRegex,
+		"publish_time_extract_regex": t.PublishTimeExtractRegex,
+		"video_extract_regex":        t.VideoExtractRegex,
+		"video_iframe_extract_regex": t.VideoIframeExtractRegex,
+		"gallery_extract_regex":      t.GalleryExtractRegex,
+	} {
+		if _, err := compileExtractRegex(pattern); err != nil {
+			return fmt.Errorf("%s%s %s 无效: %w", label, t.Name, field, err)
+		}
+	}
+	for j := range t.Extra {
+		if _, err := compileExtractRegex(t.Extra[j].Regex); err != nil {
+			return fmt.Errorf("%s%s extra[%d]%s regex 无效: %w", label, t.Name, j, t.Extra[j].Key, err)
+		}
+	}
+	// link_include/link_exclude 按 matchOne 约定：/re/ 包裹为正则（解析期校验语法），其余按子串匹配不校验
+	for field, pattern := range map[string]string{
+		"link_include": t.LinkInclude,
+		"link_exclude": t.LinkExclude,
+	} {
+		if len(pattern) > 2 && strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
+			if _, err := regexp.Compile(pattern[1 : len(pattern)-1]); err != nil {
+				return fmt.Errorf("%s%s %s 正则无效: %w", label, t.Name, field, err)
+			}
+		}
+	}
+	if _, err := parseHeaders(t.Headers); err != nil {
+		return fmt.Errorf("%s%s %w", label, t.Name, err)
+	}
+	if t.Encoding != "" {
+		if _, name := charset.Lookup(t.Encoding); name == "" {
+			return fmt.Errorf("%s%s encoding 无效: %q", label, t.Name, t.Encoding)
+		}
+	}
+	return nil
 }
 
 // pageURL 翻页地址：第 1 页/无模板返回起始页，否则按模板替换 {page}
@@ -1273,34 +1280,7 @@ func (h *HttpSpider) fetchArticleDetail(f *httpFetcher, t *httpTask, link string
 		return nil, nil
 	}
 
-	// 正文翻页：逐页 GET「下一页」并追加正文（内容无新增即停，防「下一页」永在的站）
-	if t.ContentSel != "" && t.ContentNextSel != "" {
-		maxPages := t.ContentMaxPages
-		if maxPages <= 0 {
-			maxPages = 20
-		}
-		contentHTML := article.Content
-		curURL, curDoc := link, doc
-		for i := 1; i < maxPages; i++ {
-			next := findNextURL(curDoc, t.ContentNextSel, resolveBase(curURL, curDoc))
-			if next == "" || next == curURL {
-				break
-			}
-			pageDoc, _, perr := h.fetchDoc(f, t, next)
-			if perr != nil {
-				h.ctx.Log.Warn("正文翻页失败", zap.String("next", next), zap.Error(perr))
-				break
-			}
-			chunk := t.contentOf(pageDoc)
-			if chunk == "" || strings.HasSuffix(contentHTML, chunk) {
-				break
-			}
-			contentHTML += "\n" + chunk
-			curURL, curDoc = next, pageDoc
-		}
-		article.Content = contentHTML
-		article.Description = plainSummary(contentHTML, 120)
-	}
+	h.collectContentPages(f, t, link, doc, article)
 
 	h.ctx.Log.Info("详情页提取完成", zap.String("url", link),
 		zap.String("title", truncateRunes(article.Title, 40)),
@@ -1308,6 +1288,39 @@ func (h *HttpSpider) fetchArticleDetail(f *httpFetcher, t *httpTask, link string
 		zap.Bool("cover", article.Thumbnail != ""),
 		zap.Int("extends", len(article.Extends)))
 	return article, nil
+}
+
+// collectContentPages 正文翻页：逐页 GET「下一页」并追加正文
+// （内容无新增即停，防「下一页」永在的站）；fetchArticleDetail 与 ValidateTask 共用
+func (h *HttpSpider) collectContentPages(f *httpFetcher, t *httpTask, link string, doc *goquery.Document, article *entity.Article) {
+	if t.ContentSel == "" || t.ContentNextSel == "" {
+		return
+	}
+	maxPages := t.ContentMaxPages
+	if maxPages <= 0 {
+		maxPages = 20
+	}
+	contentHTML := article.Content
+	curURL, curDoc := link, doc
+	for i := 1; i < maxPages; i++ {
+		next := findNextURL(curDoc, t.ContentNextSel, resolveBase(curURL, curDoc))
+		if next == "" || next == curURL {
+			break
+		}
+		pageDoc, _, perr := h.fetchDoc(f, t, next)
+		if perr != nil {
+			h.ctx.Log.Warn("正文翻页失败", zap.String("next", next), zap.Error(perr))
+			break
+		}
+		chunk := t.contentOf(pageDoc)
+		if chunk == "" || strings.HasSuffix(contentHTML, chunk) {
+			break
+		}
+		contentHTML += "\n" + chunk
+		curURL, curDoc = next, pageDoc
+	}
+	article.Content = contentHTML
+	article.Description = plainSummary(contentHTML, 120)
 }
 
 // saveDebugHTML 调试目录非空时保存失败现场响应 HTML（排查 selector/编码问题）
@@ -1327,4 +1340,59 @@ func (h *HttpSpider) saveDebugHTML(t *httpTask, body []byte, tag string) {
 	if err := os.WriteFile(path, body, 0o644); err == nil {
 		h.ctx.Log.Warn("已保存失败现场响应", zap.String("path", path))
 	}
+}
+
+// ValidateTask 任务校验（不入库）：抓列表页第一页 → 取第一条链接 → 提取文章字段并返回结构化结果。
+// 供 PluginService.SpiderValidate 接口调用；跳过全部判重短路，已入库文章也照样提取
+func (h *HttpSpider) ValidateTask(raw string) (interface{}, error) {
+	var t httpTask
+	if err := validateUnmarshalTask(raw, &t); err != nil {
+		return nil, err
+	}
+	if err := normalizeHTTPTask(&t, "任务"); err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	res := newValidateResult("HttpSpider", t.Name, t.SourceURL)
+	defer func() { res.CostMS = time.Since(start).Milliseconds() }()
+
+	if t.Mode == "list" {
+		res.Error = "list 模式（列表页直接入库）无详情页字段可校验，请切换为 detail 模式验证"
+		return res, nil
+	}
+
+	f := newHTTPFetcher(h, &t)
+	doc, body, err := h.fetchDoc(f, &t, t.SourceURL)
+	if err != nil {
+		h.saveDebugHTML(&t, body, "validate_list_error")
+		res.Error = fmt.Sprintf("列表页抓取失败: %v", err)
+		return res, nil
+	}
+	links := t.extractLinks(doc, resolveBase(t.SourceURL, doc))
+	res.LinksFound = len(links)
+	if len(links) == 0 {
+		res.Error = "列表页未提取到链接：核对「详情链接选择器」、链接过滤（只保留/排除）与取链属性通道"
+		return res, nil
+	}
+	res.SampleLinks = validateSampleLinks(5, func(i int) ValidateLink {
+		return ValidateLink{URL: links[i].URL, Title: links[i].Title}
+	})
+	res.FirstLink = res.SampleLinks[0]
+
+	detailDoc, dbody, err := h.fetchDoc(f, &t, links[0].URL)
+	if err != nil {
+		h.saveDebugHTML(&t, dbody, "validate_detail_error")
+		res.Error = fmt.Sprintf("详情页抓取失败: %v", err)
+		return res, nil
+	}
+	var missed []string
+	article, err := t.extractArticle(detailDoc, links[0].URL, &missed)
+	if err != nil {
+		h.saveDebugHTML(&t, dbody, "validate_detail_error")
+		res.Error = fmt.Sprintf("详情页提取失败: %v", err)
+		return res, nil
+	}
+	h.collectContentPages(f, &t, links[0].URL, detailDoc, article)
+	res.Article = articleToValidate(article, missed)
+	return res, nil
 }

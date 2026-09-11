@@ -52,6 +52,11 @@ func PluginGetDirectories(ctx *fiber.Ctx) error {
 	return ctx.JSON(mapper.MessageResultData(service.Plugin.GetDirectories(ctx.Params("id"), string(ctx.Body()))))
 }
 
+// PluginSpiderValidate 校验爬虫插件的单任务配置（不入库，仅提取展示）
+func PluginSpiderValidate(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResultData(service.Plugin.SpiderValidate(ctx.Params("id"), string(ctx.Body()))))
+}
+
 // PluginPreviewWatermark 预览水印效果
 func PluginPreviewWatermark(ctx *fiber.Ctx) error {
 	imageData, err := service.Plugin.PreviewWatermark(ctx.Params("id"))

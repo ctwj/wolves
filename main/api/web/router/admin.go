@@ -131,6 +131,7 @@ func (r *Router) api(route fiber.Router) {
 	route.Get("/plugin/log/list/:id", controller.PluginLogList)
 	route.Post("/plugin/testCookie/:id", controller.PluginTestCookie)
 	route.Post("/plugin/getDirectories/:id", controller.PluginGetDirectories)
+	route.Post("/plugin/spiderValidate/:id", controller.PluginSpiderValidate)
 	route.Get("/plugin/previewWatermark/:id", controller.PluginPreviewWatermark)
 
 	// dashboard
