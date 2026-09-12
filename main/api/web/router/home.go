@@ -7,6 +7,7 @@ import (
 	"moss/infrastructure/general/constant"
 	"moss/infrastructure/support/template"
 	"path/filepath"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -42,6 +43,15 @@ func (r *Router) RegisterHome(route fiber.Router) {
 
 	// static路由应当放到  template page路由前面
 	// 否则不能正确响应文件的content-Type
+	// 主题 css/js 常改却无 Cache-Control，浏览器启发式缓存可缓存一天以上（改样式不生效的元凶）；
+	// no-cache = 每次条件请求校验（Last-Modified 命中回 304，代价极小），图片等其他资源维持默认策略
+	route.Use("/", func(ctx *fiber.Ctx) error {
+		p := ctx.Path()
+		if strings.HasSuffix(p, ".css") || strings.HasSuffix(p, ".js") {
+			ctx.Set(fiber.HeaderCacheControl, "no-cache")
+		}
+		return ctx.Next()
+	})
 	// template public
 	if currentThemePath, err := template.CurrentThemePath(); err == nil {
 		route.Static("/", filepath.Join(currentThemePath, "public"))

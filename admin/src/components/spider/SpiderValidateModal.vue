@@ -8,9 +8,11 @@
     @update:visible="$emit('update:visible', $event)"
   >
     <template #title>
-      <span class="inline-flex items-center gap-2">
+      <span class="inline-flex items-center gap-2 min-w-0">
         任务校验
-        <a-typography-text type="secondary" class="text-xs">{{ result?.task_name }}</a-typography-text>
+        <a-tag v-if="taskLabel" color="arcoblue" size="small" class="max-w-[300px] min-w-0" :title="taskLabel">
+          <span class="truncate">{{ taskLabel }}</span>
+        </a-tag>
         <a-tag color="green" size="small">不入库 · 仅校验</a-tag>
       </span>
     </template>
@@ -25,7 +27,7 @@
       <a-alert v-if="result.error" type="error" class="mb-3">
         {{ result.error }}
         <template v-if="result.links_found === 0 && result.list_url">
-          <div class="text-xs mt-1">列表页地址：{{ result.list_url }}</div>
+          <div class="text-xs mt-1 truncate" :title="result.list_url">列表页地址：{{ result.list_url }}</div>
         </template>
       </a-alert>
 
@@ -46,17 +48,18 @@
           </div>
         </div>
 
-        <!-- 列表页链接样本 -->
+        <!-- 列表页链接样本（单行不换行，超出省略，悬停看全文） -->
         <section class="v-card">
           <header class="v-title">列表页链接（前 5 条）</header>
           <div v-for="(l, i) in result.sample_links" :key="i" class="text-xs flex gap-2 items-baseline py-0.5">
             <span class="text-gray-400 shrink-0">#{{ i + 1 }}</span>
-            <span class="truncate" :title="l.title">{{ l.title || '(无标题)' }}</span>
-            <a-typography-text type="secondary" class="truncate flex-1 text-right" style="font-size: 11px">{{ l.url }}</a-typography-text>
+            <span class="truncate min-w-0 flex-1" :title="l.title">{{ l.title || '(无标题)' }}</span>
+            <span class="truncate min-w-0 flex-1 text-right text-gray-400" style="font-size: 11px" :title="l.url">{{ l.url }}</span>
           </div>
-          <a-typography-text type="secondary" class="text-xs block mt-1">
-            校验详情页：{{ result.first_link?.url }}
-          </a-typography-text>
+          <div class="text-xs mt-1 flex items-baseline gap-1 overflow-hidden">
+            <span class="text-gray-500 shrink-0">校验详情页：</span>
+            <span class="truncate min-w-0" :title="result.first_link?.url">{{ result.first_link?.url }}</span>
+          </div>
         </section>
 
         <!-- 文章字段 -->
@@ -122,9 +125,20 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
   result: { type: Object, default: null },
+  // 点击「验证」时的任务上下文 { index, name }：多任务时加载中/未命名也能标出是哪个任务
+  task: { type: Object, default: null },
 });
 
 defineEmits(["update:visible"]);
+
+// 任务名展示：后端返回优先（已清洗），回退点击时快照；多任务下用 #序号兜底区分未命名任务
+const taskLabel = computed(() => {
+  const idx = props.task?.index;
+  const name = props.result?.task_name || props.task?.name || "";
+  if (idx == null && !name) return "";
+  const label = name || "未命名任务";
+  return idx != null ? `#${idx + 1} ${label}` : label;
+});
 
 const missedSet = computed(() => new Set(props.result?.article?.missed || []));
 

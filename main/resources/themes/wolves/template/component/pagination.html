@@ -1,6 +1,6 @@
 {{ block pagination(pageTotal, existNextPage=false) }}
 {{ if pageTotal > 1 }}
-<div class="flex justify-center items-center space-x-2">
+<div class="w-pagination flex justify-center items-center space-x-2">
     {{ if Page.PageNumber > 1 }}
     <a href="{{ Data.PageURL(Page.PageNumber - 1) }}" class="px-4 py-2 w-surface border w-border rounded-lg w-text-2 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-600 transition-all">
         <i class="fas fa-chevron-left mr-1"></i>上一页

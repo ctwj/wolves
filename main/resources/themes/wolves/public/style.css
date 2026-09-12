@@ -510,6 +510,46 @@ a:focus-visible.card-hover {
     flex-wrap: wrap;
 }
 .video-open-link { color: var(--w-red-strong); text-decoration: underline; text-underline-offset: 3px; }
+/* 嵌入通道封面层：未播放前以封面示人，点击后才加载第三方 iframe */
+.video-cover-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border: 0;
+    padding: 0;
+    background-color: #000;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.video-cover-layer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.22);
+}
+.video-cover-play {
+    position: relative;
+    z-index: 1;
+    width: 4rem;
+    height: 4rem;
+    border-radius: 999px;
+    background: var(--w-red);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    box-shadow: 0 10px 30px rgba(225, 29, 72, 0.45), 0 0 0 10px rgba(225, 29, 72, 0.12);
+    transition: transform 0.25s ease;
+}
+.video-cover-layer:hover .video-cover-play { transform: scale(1.08); }
+.video-cover-layer:active .video-cover-play { transform: scale(0.96); }
+.video-cover-layer:focus-visible { outline: 2px solid var(--w-red-strong); outline-offset: -4px; }
 .episode-bar { border-top: 1px solid var(--w-border); padding: 0.85rem 1rem 1rem; background: var(--w-surface); }
 .episode-bar-title { font-size: 0.85rem; font-weight: 600; color: var(--w-text-2); margin-bottom: 0.6rem; }
 .episode-list {
@@ -1190,3 +1230,189 @@ a.novel-nav-btn:focus-visible,
 
 /* subnav 仅首页渲染：其他页面无流内占位，内容留白恢复避开固定主行 */
 .w-main-pt { padding-top: calc(var(--nav-h, 4rem) + 1.5rem) !important; }
+
+/* ============================================================
+   Mobile Optimization（手机端视觉/触控优化，PC 端不受影响）
+   约束：tailwind.css 为预编译产物，此处一律用作用域覆盖 + 语义类，
+   覆盖已编译工具类时依赖"style.css 后加载 + 更高优先级"取胜。
+   ============================================================ */
+
+/* ---------- 全局：触控手感与溢出防护 ---------- */
+a, button, input, select, textarea,
+.episode-item, .chapter-item, .side-episode-item,
+.cat-tab, .home-tab, .novel-nav-btn, .image-viewer-item {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+/* 长链接/长英文串不撑破暗色卡片 */
+.article-content, .novel-content { overflow-wrap: anywhere; }
+/* 意外横向滚动兜底（clip 不产生滚动容器，不影响 position:sticky） */
+html, body { overflow-x: clip; }
+
+/* 动态工具栏浏览器（iOS Safari 地址栏收放）用 dvh 校正灯箱视口高 */
+.lightbox-body { max-height: 88dvh; }
+.lightbox-body img { max-height: 78dvh; }
+
+/* ---------- 分页：space-x 换行错位修正 + 手机可换行 ---------- */
+.w-pagination { gap: 0.5rem; }
+.w-pagination > * + * { margin-left: 0; }
+.w-pagination > span { background: var(--w-red); }
+
+/* ---------- 导航与移动端菜单 ---------- */
+@media (max-width: 767px) {
+    /* 主行压低（JS 量取实际高度写 --nav-h，内容留白自动跟随） */
+    .glass-nav .min-h-16 { min-height: 3.5rem; }
+    /* 取消旧规则加在 nav 自身的 padding，与内层 px-4（16px）对齐主体内容边距 */
+    .glass-nav { padding-left: 0; padding-right: 0; }
+    /* 菜单贴主行、限高可滚（长分类目录不出屏） */
+    .mobile-menu {
+        top: var(--nav-h, 3.5rem);
+        max-height: calc(100dvh - var(--nav-h, 3.5rem));
+        overflow-y: auto;
+        border-bottom: 1px solid var(--w-border);
+    }
+    .mobile-menu a { min-height: 46px; display: flex; align-items: center; }
+    .mobile-menu .mobile-menu-group + .mobile-menu-group { border-top: 1px solid var(--w-border); }
+    /* iOS：<16px 输入框聚焦会自动放大页面 */
+    .mobile-menu input[type="search"] { font-size: 16px; }
+}
+
+/* ---------- 首页：hero 收紧、避免文字被上拉的 showcase 压住 ---------- */
+@media (max-width: 767px) {
+    .hero-bg {
+        min-height: 0;
+        padding-top: calc(var(--nav-h, 3.5rem) + 0.75rem);
+        padding-bottom: 4rem;
+    }
+    .hero-bg h1 { font-size: 1.55rem; }
+    .hero-bg p { font-size: 0.9rem; }
+    /* 覆盖 -mt-32：PC 上拉 8rem 叠在 hero 上，手机端改 2.5rem 防止盖字 */
+    main.-mt-32 { margin-top: -2.5rem; }
+    main.py-12 { padding-top: 0.75rem; padding-bottom: 2rem; }
+    /* 区块纵向节奏收紧（mb-12 工具类作用域覆盖） */
+    .mb-12 { margin-bottom: 2.25rem; }
+    /* 面板/空态卡片与标题降档 */
+    .text-2xl { font-size: 1.25rem; }
+    .text-xl { font-size: 1.05rem; }
+}
+
+/* ---------- 首页：showcase 三 Tab 免跳转区 ---------- */
+@media (max-width: 767px) {
+    .home-showcase { padding: 0.9rem 0.9rem 1.1rem; border-radius: 0.85rem; }
+    .home-tabs { gap: 0.4rem; padding-bottom: 0.7rem; margin-bottom: 0.9rem; }
+    .home-tab { min-height: 40px; padding: 6px 14px; font-size: 0.88rem; }
+    .home-panel-more { margin-top: 0.9rem; }
+    .home-empty { padding: 2rem 1rem; }
+}
+
+/* ---------- 列表卡片：视频网格 / 小说条目 / 图集网格 ---------- */
+@media (max-width: 767px) {
+    .video-info { padding: 0.5rem 0.6rem 0.6rem; }
+    .video-title { font-size: 0.88rem; }
+    .video-meta { font-size: 0.68rem; }
+    .novel-item { padding: 0.75rem; gap: 0.75rem; }
+    .gallery-info { padding: 0.45rem 0.6rem 0.55rem; }
+}
+
+/* ---------- 分类/搜索页头横幅 ---------- */
+@media (max-width: 767px) {
+    /* 只命中页头大横幅（logo 小方块是 rounded-lg 不受影响） */
+    .w-gradient-hero.rounded-2xl { padding: 1.35rem 1.15rem; }
+    .w-gradient-hero.rounded-2xl h1 { font-size: 1.4rem; margin-bottom: 0.35rem; }
+    .w-gradient-hero.rounded-2xl p { font-size: 0.82rem; }
+    .cat-tabs-wrap { margin-bottom: 1.25rem; }
+}
+
+/* ---------- 文章页：卡片留白与正文排版降档 ---------- */
+@media (max-width: 767px) {
+    main .p-6 { padding: 1.15rem; }
+    main .p-5 { padding: 1rem 0.95rem; }
+    main .p-12 { padding: 2rem 1rem; }
+    /* 侧栏在手机端不吸顶 */
+    aside .sticky { position: static; }
+    aside .mb-6 { margin-bottom: 0.9rem; }
+    /* 下载按钮触控高度 */
+    #download-section a[href^="/download/"] { min-height: 44px; }
+    /* 正文 */
+    .article-content { font-size: 0.98rem; }
+    .article-content h1 { font-size: 1.35rem; }
+    .article-content h2 { font-size: 1.2rem; }
+    .article-content h3 { font-size: 1.08rem; }
+    .article-content pre { font-size: 0.8rem; padding: 0.85rem; }
+    /* 宽表格横向滚动，不撑破版心 */
+    .article-content table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
+/* ---------- 小说阅读页：手机端底部常驻章节导航 ---------- */
+@media (max-width: 767px) {
+    .novel-chapter-head { padding: 0.85rem 1rem; gap: 0.5rem; }
+    .novel-chapter-title { font-size: 1.02rem; }
+    .novel-content { font-size: 1.02rem; line-height: 1.95; }
+    /* 上一章/下一章吸附屏幕底部：长章节阅读时随时可翻页 */
+    .novel-nav {
+        position: sticky;
+        bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+        z-index: 30;
+        margin-bottom: 1rem;
+    }
+    .novel-nav-btn {
+        flex: 1;
+        justify-content: center;
+        padding: 0.65rem 0.8rem;
+        background: rgba(21, 24, 35, 0.92);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+    .novel-nav-progress {
+        padding: 0 0.9rem;
+        border: 1px solid var(--w-border);
+        border-radius: 0.75rem;
+        background: rgba(21, 24, 35, 0.92);
+    }
+    .chapter-list { max-height: 52vh; }
+}
+
+/* ---------- 视频选集栏 ---------- */
+@media (max-width: 767px) {
+    .episode-bar { padding: 0.7rem 0.85rem 0.85rem; }
+    .episode-item { font-size: 0.78rem; padding: 6px 12px; min-height: 38px; }
+    .player-tip { font-size: 0.82rem; }
+    .video-cover-play {
+        width: 3.25rem;
+        height: 3.25rem;
+        font-size: 1.05rem;
+        box-shadow: 0 8px 22px rgba(225, 29, 72, 0.45), 0 0 0 8px rgba(225, 29, 72, 0.12);
+    }
+}
+
+/* ---------- 灯箱：小屏按钮缩小防压图 ---------- */
+@media (max-width: 640px) {
+    .lightbox-close, .lightbox-prev, .lightbox-next {
+        width: 2.4rem;
+        height: 2.4rem;
+        font-size: 1.1rem;
+        background: rgba(10, 12, 18, 0.55);
+    }
+    .lightbox-prev { left: 0.5rem; }
+    .lightbox-next { right: 0.5rem; }
+    .lightbox-close { top: 0.6rem; right: 0.6rem; }
+    .lightbox-body img { max-width: 94vw; max-height: 74dvh; }
+    .lightbox-caption { font-size: 0.78rem; }
+}
+
+/* ---------- 分页：手机端可换行 + 44px 触控 ---------- */
+@media (max-width: 767px) {
+    .w-pagination { flex-wrap: wrap; }
+    .w-pagination > a,
+    .w-pagination > span {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.9rem;
+    }
+}
+
+/* ---------- 页脚收紧 ---------- */
+@media (max-width: 767px) {
+    footer.mt-16 { margin-top: 2.5rem; }
+}

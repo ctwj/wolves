@@ -257,10 +257,10 @@
             {{ end }}
         </article>
 
-        <!-- Sidebar（按内容类型差异化：视频=选集信息 / 小说=章节目录 / 图集=图集信息 / 普通=软件信息卡） -->
+        <!-- Sidebar（按内容类型差异化：小说=章节目录 / 图集=图集信息 / 普通=软件信息卡；视频的信息与选集在播放器区，不设侧栏卡） -->
         <aside class="w-full lg:w-80 flex-shrink-0">
-            {{ if Data.ContentType == "video" }}
-            {{yield videoSidebar()}}
+            {{ if Data.ContentType == "video"}}
+            {* 视频文章：无侧栏信息卡（封面在播放器 poster，信息在文章头部） *}
             {{else if Data.ContentType == "novel"}}
             {{yield novelSidebar()}}
             {{else if Data.ContentType == "image"}}

@@ -20,7 +20,8 @@
 
     <a-collapse v-else accordion expand-icon-position="left">
       <a-collapse-item v-for="(t, i) in tasks" :key="i" hide-follow-theme>
-        <template #title>
+        <!-- 注意：Arco collapse-item 的头部插槽是 #header（#title 不会被渲染，任务名会整个消失） -->
+        <template #header>
           <span class="inline-flex items-center gap-2 min-w-0">
             <span class="text-gray-400 text-xs">#{{ i + 1 }}</span>
             <span class="truncate">{{ t.name || '未命名任务' }}</span>
@@ -299,8 +300,8 @@
       </a-collapse-item>
     </a-collapse>
 
-    <!-- 任务校验结果（不入库，仅提取展示） -->
-    <SpiderValidateModal v-model:visible="validateVisible" :loading="validating >= 0 && !validateResult" :result="validateResult" />
+    <!-- 任务校验结果（不入库，仅提取展示）；task 为点击时的任务快照，多任务下加载中也能标出是哪个任务 -->
+    <SpiderValidateModal v-model:visible="validateVisible" :loading="validating >= 0 && !validateResult" :result="validateResult" :task="validateTask" />
   </div>
 </template>
 
@@ -371,6 +372,7 @@ const currentID = inject("currentID", ref(""));
 const validateVisible = ref(false);
 const validating = ref(-1);
 const validateResult = ref(null);
+const validateTask = ref(null); // { index, name }：点击验证的任务快照，供弹窗标题展示任务名
 
 async function runValidate(i) {
   const pluginID = currentID.value;
@@ -379,6 +381,7 @@ async function runValidate(i) {
     return;
   }
   validating.value = i;
+  validateTask.value = { index: i, name: props.tasks[i]?.name || "" };
   validateVisible.value = true;
   validateResult.value = null;
   try {
@@ -504,5 +507,11 @@ onBeforeUnmount(() => {
 :deep(.arco-input-wrapper input),
 :deep(.arco-textarea) {
   font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* 任务头部长名截断：Arco 的 header-title 无收缩约束，不放开则长任务名硬截断且挤出按钮区 */
+:deep(.arco-collapse-item-header-title) {
+  flex: 1;
+  min-width: 0;
 }
 </style>
