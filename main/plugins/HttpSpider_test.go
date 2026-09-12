@@ -552,3 +552,42 @@ func TestHttpDetectBlockSigns(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupHTTPTasksByDomain(t *testing.T) {
+	enabled := []*httpTask{
+		{Name: "a1", SourceURL: "https://a.tv/list"},
+		{Name: "b1", SourceURL: "https://www.b.tv/list"},
+		{Name: "a2", SourceURL: "http://www.a.tv/list2"}, // www/http 与裸域 https 同域名归并
+		{Name: "c1", SourceURL: "http://127.0.0.1:9000/list"},
+	}
+	groups := groupHTTPTasksByDomain(enabled)
+
+	want := []struct {
+		domain  string
+		names   []string
+		indexes []int
+	}{
+		{domain: "a.tv", names: []string{"a1", "a2"}, indexes: []int{0, 2}},
+		{domain: "b.tv", names: []string{"b1"}, indexes: []int{1}},
+		{domain: "127.0.0.1:9000", names: []string{"c1"}, indexes: []int{3}},
+	}
+	if len(groups) != len(want) {
+		t.Fatalf("group count = %d, want %d: %+v", len(groups), len(want), groups)
+	}
+	for gi, g := range groups {
+		if g.Domain != want[gi].domain {
+			t.Errorf("group[%d] domain = %q, want %q", gi, g.Domain, want[gi].domain)
+		}
+		if len(g.Tasks) != len(want[gi].names) {
+			t.Fatalf("group[%d] %s task count = %d, want %d", gi, g.Domain, len(g.Tasks), len(want[gi].names))
+		}
+		for ti, s := range g.Tasks {
+			if s.task.Name != want[gi].names[ti] {
+				t.Errorf("group[%d] task[%d] name = %q, want %q", gi, ti, s.task.Name, want[gi].names[ti])
+			}
+			if s.index != want[gi].indexes[ti] {
+				t.Errorf("group[%d] task[%d] %s index = %d, want %d", gi, ti, s.task.Name, s.index, want[gi].indexes[ti])
+			}
+		}
+	}
+}

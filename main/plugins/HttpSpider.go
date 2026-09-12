@@ -150,6 +150,7 @@ func (h *HttpSpider) Info() *pluginEntity.PluginInfo {
 		ID: "HttpSpider",
 		About: "通用 HTTP 采集插件（无浏览器，多任务）：面向无需 JS 渲染即可拿到完整 HTML 的站点，" +
 			"纯 HTTP 请求 + goquery 解析，任务内详情页并发抓取（concurrency 默认 4）远快于无头浏览器。" +
+			"多任务按 source_url 域名分组调度：同域名任务共用一个线程按原顺序串行执行（避免多任务同时打同一站点触发限频），不同域名各一个线程并行，与 HeadlessSpider 语义一致。" +
 			"tasks 配置 JSON 任务数组，配置模型与 HeadlessSpider 对齐（任务 JSON 可平移）：mode=detail/list、" +
 			"翻页 page_url_pattern（URL 模板）/ next_page_sel（下一页 a[href]）；取链属性通道 link_selector+link_attr+" +
 			"link_extract_regex+link_url_template（适配 data-id 拼详情链接）；字段统一提取模型 title/cover/content/" +
@@ -206,19 +207,23 @@ func (h *HttpSpider) Run(ctx *pluginEntity.Plugin) error {
 		return fmt.Errorf("tasks 中没有启用（enable=true）的任务")
 	}
 
-	h.ctx.Log.Info("开始 HTTP 采集", zap.Int("tasks", len(enabled)),
+	groups := groupHTTPTasksByDomain(enabled)
+	h.ctx.Log.Info("开始 HTTP 采集", zap.Int("tasks", len(enabled)), zap.Int("domains", len(groups)),
 		zap.Int("concurrency", h.Concurrency), zap.Bool("dry_run", h.DryRun), zap.Int("limit", h.Limit))
 	startTime := time.Now()
 
-	// 任务间并行（HTTP 无浏览器实例上限）；每任务返回独立汇总
+	// 每个域名分组一个线程并行采集，组内任务按原顺序串行执行（同域名多任务同时请求
+	// 易触发限频/封禁）；results 按任务在 enabled 中的下标写槽位，各 goroutine 只写自己的任务，无锁
 	results := make([]taskResult, len(enabled))
 	var wg sync.WaitGroup
-	for i, t := range enabled {
+	for _, g := range groups {
 		wg.Add(1)
-		go func(i int, t *httpTask) {
+		go func(g httpDomainGroup) {
 			defer wg.Done()
-			results[i] = h.runTask(t)
-		}(i, t)
+			for _, s := range g.Tasks {
+				results[s.index] = h.runTask(s.task)
+			}
+		}(g)
 	}
 	wg.Wait()
 
@@ -236,6 +241,37 @@ func (h *HttpSpider) Run(ctx *pluginEntity.Plugin) error {
 // taskResult 单任务汇总
 type taskResult struct {
 	Collected, Skipped, Failed int
+}
+
+// httpDomainGroup 同域名（source_url 的 host，含端口，键同 taskDomainKey）的一组启用任务，
+// 组内保持任务数组原顺序串行执行
+type httpDomainGroup struct {
+	Domain string
+	Tasks  []httpTaskSlot
+}
+
+// httpTaskSlot 任务及其在 enabled 数组中的下标，用于 results 槽位写入
+type httpTaskSlot struct {
+	index int
+	task  *httpTask
+}
+
+// groupHTTPTasksByDomain 把启用任务按列表页 source_url 的域名分组（复用 HeadlessSpider
+// 的 taskDomainKey：host 含端口、去 www. 前缀、http/https 同域归并，解析失败按原始串独立分组）。
+// 分组顺序取域名首次出现顺序，日志输出稳定
+func groupHTTPTasksByDomain(tasks []*httpTask) []httpDomainGroup {
+	var groups []httpDomainGroup
+	idx := map[string]int{}
+	for i, t := range tasks {
+		key := taskDomainKey(t.SourceURL)
+		if gi, ok := idx[key]; ok {
+			groups[gi].Tasks = append(groups[gi].Tasks, httpTaskSlot{index: i, task: t})
+			continue
+		}
+		idx[key] = len(groups)
+		groups = append(groups, httpDomainGroup{Domain: key, Tasks: []httpTaskSlot{{index: i, task: t}}})
+	}
+	return groups
 }
 
 // httpFetcher 任务级 HTTP 抓取器：共享连接池（Transport 复用），任务级请求头

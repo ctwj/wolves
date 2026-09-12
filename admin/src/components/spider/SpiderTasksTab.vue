@@ -31,6 +31,13 @@
         </template>
         <template #extra>
           <span class="inline-flex items-center gap-2" @click.stop>
+            <!-- 入库分类标签：开关前直显任务文章归入的栏目，免展开核对 -->
+            <a-tooltip :content="'入库分类：' + categoryNameOf(t)">
+              <a-tag class="store-category-tag">
+                <template #icon><icon-folder :size="13" /></template>
+                {{ categoryNameOf(t) }}
+              </a-tag>
+            </a-tooltip>
             <a-switch v-model="t.enable" size="small" type="round">
               <template #checked>启用</template>
               <template #unchecked>停用</template>
@@ -308,7 +315,7 @@
 <script setup>
 import { inject, onBeforeUnmount, onMounted, ref } from "vue";
 import { Message } from "@arco-design/web-vue";
-import { pluginSpiderValidate } from "@/api/index.js";
+import { pluginSpiderValidate, categoryTree } from "@/api/index.js";
 import SelectCategory from "@/components/data/SelectCategory.vue";
 import AdvAttrRegexInput from "@/components/utils/AdvAttrRegexInput.vue";
 import SpiderValidateModal from "@/components/spider/SpiderValidateModal.vue";
@@ -361,6 +368,23 @@ const contentTypeLabels = { novel: "小说", image: "图集", video: "视频" };
 const contentTypeColors = { novel: "orange", image: "green", video: "purple" };
 function contentTypeLabel(v) { return contentTypeLabels[v] || v; }
 function contentTypeColor(v) { return contentTypeColors[v] || "gray"; }
+
+// ==================== 入库分类标签（任务列表头部展示） ====================
+// 拉一次分类树摊平成 id→name 映射（含子分类）；失败只影响标签显示，不影响编辑
+const categoryNames = ref({});
+categoryTree()
+  .then((tree) => {
+    const map = {};
+    const walk = (list) => (list || []).forEach((c) => { map[c.id] = c.name; walk(c.children); });
+    walk(tree);
+    categoryNames.value = map;
+  })
+  .catch(() => {});
+
+function categoryNameOf(t) {
+  if (!t.category_id) return "未分类";
+  return categoryNames.value[t.category_id] || `分类#${t.category_id}`;
+}
 
 // 渐进披露兜底：非视频类型但已配置过播放源字段时保持可见，避免旧配置被隐藏后误判丢失
 function hasVideoConfig(t) {
@@ -444,6 +468,16 @@ onBeforeUnmount(() => {
 <style scoped>
 .input {
   width: 100%;
+}
+
+/* 入库分类标签：与开关同排需紧凑，超长栏目名截断（完整名见 tooltip） */
+.store-category-tag {
+  max-width: 150px;
+  overflow: hidden;
+}
+
+.store-category-tag :deep(.arco-tag-icon) {
+  margin-right: 3px;
 }
 
 /* Swiss 卡片分区：白底细边框 + 紧凑内边距（dashboard 密度） */
