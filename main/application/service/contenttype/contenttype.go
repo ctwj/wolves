@@ -18,9 +18,10 @@ const (
 	TypeVideo    = "video"
 )
 
-// chapterSeparator 小说章节分隔符（纯文本，TinyMCE 可视化模式可直接输入，
-// 且经 bluemonday UGCPolicy 清洗后存活——HTML 注释会被剥离，不可用）
-const chapterSeparator = "===chapter==="
+// ChapterSeparator 小说章节分隔符（纯文本，TinyMCE 可视化模式可直接输入，
+// 且经 bluemonday UGCPolicy 清洗后存活——HTML 注释会被剥离，不可用）。
+// 导出供合并类插件（如 NovelMerger）拼接正文，保证与切分端单一事实源
+const ChapterSeparator = "===chapter==="
 
 // VideoItem 视频选集：Embed=false 为直链 mp4（<video> 播放），
 // true 为第三方播放页（<iframe> 嵌入）
@@ -63,22 +64,22 @@ func SplitNovelChapters(content string) []NovelChapter {
 	if strings.TrimSpace(content) == "" {
 		return chapters
 	}
-	for _, seg := range strings.Split(content, chapterSeparator) {
+	for _, seg := range strings.Split(content, ChapterSeparator) {
 		html := strings.TrimSpace(seg)
 		if html == "" {
 			continue
 		}
 		chapters = append(chapters, NovelChapter{
 			Index: len(chapters) + 1,
-			Title: extractHeading(html),
+			Title: ExtractHeading(html),
 			HTML:  html,
 		})
 	}
 	return chapters
 }
 
-// extractHeading 提取段内首个 h1-h6 的文本作为章节标题，无标题返回空串
-func extractHeading(html string) string {
+// ExtractHeading 提取段内首个 h1-h6 的文本作为章节标题，无标题返回空串
+func ExtractHeading(html string) string {
 	m := headingRegexp.FindStringSubmatch(html)
 	if len(m) < 2 {
 		return ""

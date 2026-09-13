@@ -302,6 +302,30 @@ func (p *PluginService) SpiderValidate(id string, body string) (result interface
 	return nil, errors.New("plugin does not support task validation")
 }
 
+// NovelPreview 小说合并插件预览：body 为 {keyword, pattern}（只读，不入库）
+func (p *PluginService) NovelPreview(id string, body string) (result interface{}, err error) {
+	item, err := p.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if previewer, ok := item.Entry.(interface{ PreviewMerge(raw string) (interface{}, error) }); ok {
+		return previewer.PreviewMerge(body)
+	}
+	return nil, errors.New("plugin does not support novel preview")
+}
+
+// NovelMerge 小说合并插件执行合并：body 为 {keyword, pattern, ids}
+func (p *PluginService) NovelMerge(id string, body string) (result interface{}, err error) {
+	item, err := p.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if merger, ok := item.Entry.(interface{ ExecuteMerge(raw string) (interface{}, error) }); ok {
+		return merger.ExecuteMerge(body)
+	}
+	return nil, errors.New("plugin does not support novel merge")
+}
+
 // PreviewWatermark 预览水印效果
 func (p *PluginService) PreviewWatermark(id string) ([]byte, error) {
 	item, err := p.Get(id)

@@ -198,6 +198,7 @@ export default {
     PushToBing:'推送到必应',
     MakeCarousel:'制作模板轮播',
     PostStore:'发布文章',
+    NovelMerger:'小说章节合并',
     DidiAuto:'滴滴友联自动任务',
     BaiduCloudTransfer:'百度网盘转存',
     QuarkCloudTransfer:'夸克网盘转存',

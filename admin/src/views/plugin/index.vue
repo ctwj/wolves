@@ -111,7 +111,7 @@
   // 配置项多的插件（爬虫类）用宽弹窗，其余保持默认 600，避免长表单在小宽度下换行局促
   const optionsWidth = computed(()=>{
     if (store.isMobile) return '100%'
-    return ['HttpSpider', 'HeadlessSpider'].includes(currentID.value) ? 960 : 600
+    return ['HttpSpider', 'HeadlessSpider', 'NovelMerger'].includes(currentID.value) ? 960 : 600
   })
 
 

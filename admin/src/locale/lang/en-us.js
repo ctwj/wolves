@@ -198,6 +198,7 @@ export default {
     PushToBing: 'Push To Bing',
     MakeCarousel:'Make Carousel',
     PostStore:'Publish Articles',
+    NovelMerger:'Novel Chapter Merger',
     DidiAuto:'Didi Auto',
     BaiduCloudTransfer:'Baidu Cloud Transfer',
     QuarkCloudTransfer:'Quark Cloud Transfer',

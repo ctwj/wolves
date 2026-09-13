@@ -57,6 +57,16 @@ func PluginSpiderValidate(ctx *fiber.Ctx) error {
 	return ctx.JSON(mapper.MessageResultData(service.Plugin.SpiderValidate(ctx.Params("id"), string(ctx.Body()))))
 }
 
+// PluginNovelPreview 小说合并插件预览匹配结果（只读，不入库）
+func PluginNovelPreview(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResultData(service.Plugin.NovelPreview(ctx.Params("id"), string(ctx.Body()))))
+}
+
+// PluginNovelMerge 小说合并插件执行合并（创建合并文章并删除原章节）
+func PluginNovelMerge(ctx *fiber.Ctx) error {
+	return ctx.JSON(mapper.MessageResultData(service.Plugin.NovelMerge(ctx.Params("id"), string(ctx.Body()))))
+}
+
 // PluginPreviewWatermark 预览水印效果
 func PluginPreviewWatermark(ctx *fiber.Ctx) error {
 	imageData, err := service.Plugin.PreviewWatermark(ctx.Params("id"))
