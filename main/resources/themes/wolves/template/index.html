@@ -135,11 +135,11 @@
     </div>
 </div>
 
-<!-- Software Download Section -->
+<!-- Latest Resources Section -->
 {{ res := Widget.IndexList() }}
 <section class="mb-12">
     <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold w-text">软件下载</h2>
+        <h2 class="text-2xl font-bold w-text">最新资源</h2>
     </div>
 
     <!-- Category Tags -->
@@ -151,11 +151,11 @@
         {{ end }}
     </div>
 
-    <!-- Software Grid -->
+    <!-- Resource Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {{ range i, v := res }}
         {{ tags := Tag().Limit(2).ListByArticleID(v.ID) }}
-        <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border card-hover hover:shadow-lg relative group block overflow-hidden">
+        <a href="{{ v.URL() }}" class="w-surface rounded-xl p-4 border w-border card-hover hover:shadow-lg block overflow-hidden">
             <div class="flex items-start">
                 <div class="w-12 h-12 w-gradient-hero rounded-lg flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
                     {{ if v.Thumbnail != "" }}
@@ -175,9 +175,6 @@
                     {{ end }}
                     <span class="text-xs w-text-3">{{ v.CreateTimeFormat() }}</span>
                 </div>
-                <button class="opacity-0 group-hover:opacity-100 absolute top-2 right-2 bg-primary-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs transition-opacity hover:bg-primary-600 flex-shrink-0">
-                    <i class="fas fa-download"></i>
-                </button>
             </div>
         </a>
         {{ end }}
