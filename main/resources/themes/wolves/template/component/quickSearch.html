@@ -1,17 +1,17 @@
 {{block homeQuickSearch()}}
-{* 首页快速搜索入口：数据来自 QuickSearchLinks 插件配置（Widget.QuickSearch 预构建搜索链接）；
+{* 首页快速搜索入口：数据来自 QuickSearchLinks 插件配置（Widget.QuickSearch 预构建搜索链接）。
+   无区块标题（按需求隐藏），仅胶囊按钮组；样式全部自包含。
    插件未启用或列表为空时整体不渲染。仅 wolves 主题使用 *}
 {{qs := Widget.QuickSearch()}}
 {{ if qs.Enable && len(qs.Items) > 0 }}
-<section class="w-quick-search mb-10" aria-label="快捷搜索">
+<section class="w-quick-search" aria-label="快捷搜索">
     <style>
-        .w-qs-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .875rem; }
-        .w-qs-head i { color: rgb(var(--w-primary-rgb, 96 165 250)); }
-        .w-qs-count { font-size: .75rem; padding: 0 .5rem; border-radius: 9999px; background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .55); }
+        .w-quick-search { margin-bottom: 3rem; }
         /* soft-ui 胶囊：软阴影 + 200ms 过渡 + 可见焦点环；flex-wrap 自适应换行（避免裁剪） */
         .w-qs-list { display: flex; flex-wrap: wrap; gap: .625rem .5rem; }
         .w-qs-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .4rem .9rem; border-radius: 9999px;
             font-size: .8125rem; font-weight: 500; line-height: 1.4; border: 1px solid transparent; cursor: pointer;
+            text-decoration: none;
             box-shadow: 0 2px 4px rgba(0, 0, 0, .25); transition: transform .2s, box-shadow .2s, background-color .2s, border-color .2s; }
         .w-qs-chip i { font-size: .8125rem; }
         .w-qs-chip:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
@@ -29,11 +29,6 @@
         .w-qs-chip.cyan   { background: rgba(34, 211, 238, .12);  color: #67e8f9; border-color: rgba(34, 211, 238, .26); }
         .w-qs-chip.cyan:hover   { background: rgba(34, 211, 238, .22); }
     </style>
-    <div class="w-qs-head">
-        <i class="fas fa-bolt" aria-hidden="true"></i>
-        <h2 class="text-lg font-semibold w-text">{{ qs.Title }}</h2>
-        <span class="w-qs-count">{{ len(qs.Items) }}</span>
-    </div>
     <div class="w-qs-list">
         {{ range i, v := qs.Items }}
         {{ if v.Label != "" }}
