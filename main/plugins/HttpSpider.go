@@ -437,7 +437,7 @@ func normalizeHTTPTask(t *httpTask, label string) error {
 	if t.SourceURL == "" || t.ListSelector == "" {
 		return fmt.Errorf("%s%s 缺少 source_url 或 list_selector", label, t.Name)
 	}
-	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
+	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" && t.DedupBy != "title" {
 		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title/title）: %q", label, t.Name, t.DedupBy)
 	}
 	for field, pattern := range map[string]string{

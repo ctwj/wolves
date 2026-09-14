@@ -75,9 +75,13 @@ func TestHttpParseTasks(t *testing.T) {
 	if _, err := h.parseTasks(); err == nil {
 		t.Error("invalid mode should fail")
 	}
-	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","dedup_by":"title"}]`
+	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","dedup_by":"slug"}]`
 	if _, err := h.parseTasks(); err == nil {
 		t.Error("invalid dedup_by should fail")
+	}
+	h.Tasks = `[{"name":"x","enable":true,"source_url":"https://a.tv/","list_selector":".i","dedup_by":"title"}]`
+	if _, err := h.parseTasks(); err != nil {
+		t.Errorf("dedup_by=title should be accepted: %v", err)
 	}
 
 	// 正则非法在解析期报错

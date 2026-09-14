@@ -403,7 +403,7 @@ func normalizeSpiderTask(t *spiderTask, label string) error {
 	if t.LinkMode != "" && t.LinkMode != "href" && t.LinkMode != "click" {
 		return fmt.Errorf("%s%s link_mode 无效（仅支持 href/click）: %q", label, t.Name, t.LinkMode)
 	}
-	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
+	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" && t.DedupBy != "title" {
 		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title/title）: %q", label, t.Name, t.DedupBy)
 	}
 	if t.ClickWaitMs <= 0 {
