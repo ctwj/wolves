@@ -1,0 +1,49 @@
+{{block homeQuickSearch()}}
+{* 首页快速搜索入口：数据来自 QuickSearchLinks 插件配置（Widget.QuickSearch 预构建搜索链接）；
+   插件未启用或列表为空时整体不渲染。仅 wolves 主题使用 *}
+{{qs := Widget.QuickSearch()}}
+{{ if qs.Enable && len(qs.Items) > 0 }}
+<section class="w-quick-search mb-10" aria-label="快捷搜索">
+    <style>
+        .w-qs-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .875rem; }
+        .w-qs-head i { color: rgb(var(--w-primary-rgb, 96 165 250)); }
+        .w-qs-count { font-size: .75rem; padding: 0 .5rem; border-radius: 9999px; background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .55); }
+        /* soft-ui 胶囊：软阴影 + 200ms 过渡 + 可见焦点环；flex-wrap 自适应换行（避免裁剪） */
+        .w-qs-list { display: flex; flex-wrap: wrap; gap: .625rem .5rem; }
+        .w-qs-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .4rem .9rem; border-radius: 9999px;
+            font-size: .8125rem; font-weight: 500; line-height: 1.4; border: 1px solid transparent; cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, .25); transition: transform .2s, box-shadow .2s, background-color .2s, border-color .2s; }
+        .w-qs-chip i { font-size: .8125rem; }
+        .w-qs-chip:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
+        .w-qs-chip:focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 2px; }
+        .w-qs-chip.blue   { background: rgba(59, 130, 246, .14);  color: #93c5fd; border-color: rgba(59, 130, 246, .28); }
+        .w-qs-chip.blue:hover   { background: rgba(59, 130, 246, .24); }
+        .w-qs-chip.green  { background: rgba(52, 211, 153, .12);  color: #6ee7b7; border-color: rgba(52, 211, 153, .26); }
+        .w-qs-chip.green:hover  { background: rgba(52, 211, 153, .22); }
+        .w-qs-chip.amber  { background: rgba(251, 191, 36, .12);  color: #fcd34d; border-color: rgba(251, 191, 36, .26); }
+        .w-qs-chip.amber:hover  { background: rgba(251, 191, 36, .22); }
+        .w-qs-chip.pink   { background: rgba(244, 114, 182, .12); color: #f9a8d4; border-color: rgba(244, 114, 182, .26); }
+        .w-qs-chip.pink:hover   { background: rgba(244, 114, 182, .22); }
+        .w-qs-chip.violet { background: rgba(167, 139, 250, .12); color: #c4b5fd; border-color: rgba(167, 139, 250, .26); }
+        .w-qs-chip.violet:hover { background: rgba(167, 139, 250, .22); }
+        .w-qs-chip.cyan   { background: rgba(34, 211, 238, .12);  color: #67e8f9; border-color: rgba(34, 211, 238, .26); }
+        .w-qs-chip.cyan:hover   { background: rgba(34, 211, 238, .22); }
+    </style>
+    <div class="w-qs-head">
+        <i class="fas fa-bolt" aria-hidden="true"></i>
+        <h2 class="text-lg font-semibold w-text">{{ qs.Title }}</h2>
+        <span class="w-qs-count">{{ len(qs.Items) }}</span>
+    </div>
+    <div class="w-qs-list">
+        {{ range i, v := qs.Items }}
+        {{ if v.Label != "" }}
+        <a href="{{ v.Href }}" class="w-qs-chip {{ v.Color }}" title="搜索：{{ v.Keyword }}">
+            {{ if v.Icon != "" }}<i class="{{ v.Icon }}" aria-hidden="true"></i>{{ end }}
+            <span>{{ v.Label }}</span>
+        </a>
+        {{ end }}
+        {{ end }}
+    </div>
+</section>
+{{ end }}
+{{end}}

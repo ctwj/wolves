@@ -68,6 +68,7 @@ func initPlugins() {
 		// plugins.NewPushToBing(),
 		// plugins.NewPushToSearchEngine(), // 统一的搜索引擎推送插件（百度+Bing）
 		plugins.NewMakeCarousel(),
+		plugins.NewQuickSearchLinks(),
 		plugins.NewPostStore(),
 		plugins.NewNovelMerger(),
 		// plugins.NewDidiAuto(),

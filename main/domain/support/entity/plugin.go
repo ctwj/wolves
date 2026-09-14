@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+// QuickSearchItem 首页快速搜索快捷入口（QuickSearchLinks 插件配置，wolves 主题消费）
+type QuickSearchItem struct {
+	Label   string `json:"label"`   // 展示文案
+	Keyword string `json:"keyword"` // 搜索关键词
+	Icon    string `json:"icon"`    // Font Awesome 图标类名，如 fas fa-bolt
+	Color   string `json:"color"`   // 色系：blue/pink/green/amber/violet/cyan
+	Href    string `json:"-"`       // 由 Widget 预构建的搜索链接（不出现在配置中）
+}
+
 type Plugin struct {
 	Entry       PluginEntry
 	Info        *PluginInfo

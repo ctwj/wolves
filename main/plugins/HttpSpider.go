@@ -438,7 +438,7 @@ func normalizeHTTPTask(t *httpTask, label string) error {
 		return fmt.Errorf("%s%s 缺少 source_url 或 list_selector", label, t.Name)
 	}
 	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
-		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title）: %q", label, t.Name, t.DedupBy)
+		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title/title）: %q", label, t.Name, t.DedupBy)
 	}
 	for field, pattern := range map[string]string{
 		"link_extract_regex":         t.LinkExtractRegex,
@@ -586,10 +586,10 @@ func (t *httpTask) extractLinks(doc *goquery.Document, base *url.URL) []httpLink
 		if !matchFilter(abs, t.LinkInclude, t.LinkExclude) {
 			return
 		}
-		if _, dup := seen[abs]; dup {
+		if _, dup := seen[normalizeLinkKey(abs)]; dup {
 			return
 		}
-		seen[abs] = struct{}{}
+		seen[normalizeLinkKey(abs)] = struct{}{}
 		links = append(links, httpLink{URL: abs, Title: httpItemTitle(item, t.ListTitleSel)})
 	})
 	return links
@@ -709,10 +709,10 @@ func (t *httpTask) extractListArticles(doc *goquery.Document, base *url.URL) []*
 		if !matchFilter(abs, t.LinkInclude, t.LinkExclude) {
 			return
 		}
-		if _, dup := seen[abs]; dup {
+		if _, dup := seen[normalizeLinkKey(abs)]; dup {
 			return
 		}
-		seen[abs] = struct{}{}
+		seen[normalizeLinkKey(abs)] = struct{}{}
 		title := httpItemTitle(item, t.ListTitleSel)
 		if title == "" {
 			return // 无标题无法成文
@@ -745,16 +745,22 @@ func (t *httpTask) extractListArticles(doc *goquery.Document, base *url.URL) []*
 			desc = item.Text()
 		}
 		art.Description = plainSummary(desc, 120)
+		// 溯源：记录源 URL（排查重复采集时比对用）
+		art.Extends.Set("source_url", abs)
 		articles = append(articles, art)
 	})
 	return articles
 }
 
-// dedupSlug 去重键：默认（含 url_title）= 源URL+标题 哈希；"url" = 仅源 URL 哈希。
+// dedupSlug 去重键：默认 url_title = 源URL+标题 哈希；"url" = 仅源 URL；
+// "title" = 仅标题（源站链接带随机参数导致 URL 每次变化时用，站点标题需唯一）。
 // 与 spiderTask.dedupSlug 逻辑一致（复用 hashSlug，保持跨插件去重键兼容）
 func (t *httpTask) dedupSlug(link, title string) string {
-	if t.DedupBy == "url" {
+	switch t.DedupBy {
+	case "url":
 		return hashSlug(link, "")
+	case "title":
+		return hashSlug("", title)
 	}
 	return hashSlug(link, title)
 }
@@ -983,6 +989,8 @@ func (t *httpTask) extractArticle(doc *goquery.Document, link string, missed *[]
 		}
 	}
 	item.Extends = extends
+	// 溯源：记录源 URL，排查重复采集时可直接比对（如 URL 带随机参数的站点）
+	item.Extends.Set("source_url", link)
 
 	// 图集地址按详情页 URL 绝对化（与封面同理）
 	if base, berr := url.Parse(link); berr == nil {
@@ -1235,6 +1243,12 @@ func (h *HttpSpider) processArticle(t *httpTask, article *entity.Article, st *ta
 		return h.Limit > 0 && st.collected >= h.Limit
 	}
 	if err := service.Article.Create(article); err != nil {
+		if isDuplicateKeyErr(err) {
+			// 跨进程并发下 ExistsSlug 与写入间的竞态窗口：按已存在跳过，不计失败
+			st.skipped++
+			h.ctx.Log.Debug("文章已被并发写入，跳过", zap.String("slug", article.Slug))
+			return h.hitStop(t, st)
+		}
 		st.failed++
 		h.ctx.Log.Error("创建文章失败", zap.String("title", article.Title), zap.Error(err))
 		return false

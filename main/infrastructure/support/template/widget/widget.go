@@ -11,10 +11,13 @@ import (
 	"moss/domain/core/repository/context"
 	"moss/domain/core/service"
 	coreUtils "moss/domain/core/utils"
+	pluginEntity "moss/domain/support/entity"
+	pluginService "moss/domain/support/service"
 	"moss/infrastructure/general/constant"
 	"moss/infrastructure/persistent/db"
 	"moss/infrastructure/support/cache"
 	"moss/infrastructure/support/log"
+	"net/url"
 	"sort"
 	"time"
 )
@@ -46,6 +49,35 @@ func (w *Widget) Carousel() (res []entity.TemplateCarousel) {
 		return
 	}
 	return config.Config.Template.Carousel
+}
+
+// QuickSearchDataResult 首页快速搜索快捷入口（QuickSearchLinks 插件配置，wolves 主题消费）
+type QuickSearchDataResult struct {
+	Enable bool
+	Title  string
+	Items  []pluginEntity.QuickSearchItem
+}
+
+// QuickSearch 读取 QuickSearchLinks 插件配置并预构建搜索链接
+//（模板引擎无 URL 转义函数，Href 在此用 url.QueryEscape 生成）
+func (w *Widget) QuickSearch() (res QuickSearchDataResult) {
+	res.Title = "快速搜索"
+	item, err := pluginService.Plugin.Get("QuickSearchLinks")
+	if err != nil {
+		return
+	}
+	if provider, ok := item.Entry.(interface {
+		QuickSearchData() (bool, string, []pluginEntity.QuickSearchItem)
+	}); ok {
+		res.Enable, res.Title, res.Items = provider.QuickSearchData()
+	}
+	for i := range res.Items {
+		if res.Items[i].Keyword == "" {
+			res.Items[i].Keyword = res.Items[i].Label
+		}
+		res.Items[i].Href = "/search?keyword=" + url.QueryEscape(res.Items[i].Keyword)
+	}
+	return
 }
 
 // Menu 模板导航（带缓存，10分钟 TTL）

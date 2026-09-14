@@ -2,8 +2,14 @@
 {{import "./component/category/video.html"}}
 {{import "./component/category/novel.html"}}
 {{import "./component/category/image.html"}}
+{{import "./component/carousel.html"}}
+{{import "./component/quickSearch.html"}}
 
 {{block main()}}
+{* 首页轮播（数据来自 配置 → 模板 → 轮播图，空数据/开关关闭自动隐藏） *}
+{{yield homeCarousel()}}
+{* 快捷搜索入口（数据来自 QuickSearchLinks 插件，空数据/停用自动隐藏） *}
+{{yield homeQuickSearch()}}
 {* 内容聚合预览区：首页顶部直接浏览三类最新内容（Tab 免跳转切换），复用分类页布局组件 *}
 {{ videoCat := Category().GetBySlug("video") }}
 {{ novelCat := Category().GetBySlug("novel") }}

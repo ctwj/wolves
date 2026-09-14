@@ -404,7 +404,7 @@ func normalizeSpiderTask(t *spiderTask, label string) error {
 		return fmt.Errorf("%s%s link_mode 无效（仅支持 href/click）: %q", label, t.Name, t.LinkMode)
 	}
 	if t.DedupBy != "" && t.DedupBy != "url" && t.DedupBy != "url_title" {
-		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title）: %q", label, t.Name, t.DedupBy)
+		return fmt.Errorf("%s%s dedup_by 无效（仅支持 url/url_title/title）: %q", label, t.Name, t.DedupBy)
 	}
 	if t.ClickWaitMs <= 0 {
 		t.ClickWaitMs = 250
@@ -542,6 +542,12 @@ func (h *HeadlessSpider) processArticle(t *spiderTask, article *entity.Article, 
 		return h.Limit > 0 && st.collected >= h.Limit
 	}
 	if err := service.Article.Create(article); err != nil {
+		if isDuplicateKeyErr(err) {
+			// 跨进程并发下 ExistsSlug 与写入间的竞态窗口：按已存在跳过，不计失败
+			st.skipped++
+			h.ctx.Log.Debug("文章已被并发写入，跳过", zap.String("slug", article.Slug))
+			return h.hitStopWhenExists(t, st)
+		}
 		st.failed++
 		h.ctx.Log.Error("创建文章失败", zap.String("title", article.Title), zap.Error(err))
 		return false
@@ -1016,10 +1022,10 @@ func (h *HeadlessSpider) extractLinksByHref(page *rod.Page, t *spiderTask, base 
 		if !matchFilter(abs, t.LinkInclude, t.LinkExclude) {
 			continue
 		}
-		if _, dup := seen[abs]; dup {
+		if _, dup := seen[normalizeLinkKey(abs)]; dup {
 			continue
 		}
-		seen[abs] = struct{}{}
+		seen[normalizeLinkKey(abs)] = struct{}{}
 		links = append(links, spiderLink{URL: abs, Title: itemTitle(el, t.ListTitleSel)})
 	}
 	return links, nil
@@ -1242,10 +1248,10 @@ func (h *HeadlessSpider) extractListArticles(page *rod.Page, t *spiderTask, base
 		if !matchFilter(abs, t.LinkInclude, t.LinkExclude) {
 			continue
 		}
-		if _, dup := seen[abs]; dup {
+		if _, dup := seen[normalizeLinkKey(abs)]; dup {
 			continue
 		}
-		seen[abs] = struct{}{}
+		seen[normalizeLinkKey(abs)] = struct{}{}
 		title := itemTitle(el, t.ListTitleSel)
 		if title == "" {
 			continue // 无标题无法成文
@@ -1284,6 +1290,8 @@ func (h *HeadlessSpider) extractListArticles(page *rod.Page, t *spiderTask, base
 			}
 		}
 		item.Description = plainSummary(desc, 120)
+		// 溯源：记录源 URL（排查重复采集时比对用）
+		item.Extends.Set("source_url", abs)
 		articles = append(articles, item)
 	}
 	return articles
@@ -1523,6 +1531,8 @@ func (h *HeadlessSpider) extractArticleOnPage(page *rod.Page, t *spiderTask, lin
 		}
 	}
 	item.Extends = extends
+	// 溯源：记录源 URL，排查重复采集时可直接比对（如 URL 带随机参数的站点）
+	item.Extends.Set("source_url", link)
 	h.ctx.Log.Info("详情页提取完成", zap.String("url", link),
 		zap.String("title", truncateRunes(title, 40)),
 		zap.Int("content_len", len(contentHTML)),
@@ -1649,11 +1659,15 @@ func (t *spiderTask) listCoverAttr() string {
 // hashSlug / dedup 键与文章构建辅助（truncateRunes/sanitizeFilename/buildVideoSources/
 // parsePublishTime/plainSummary）见 spiderCommon.go
 
-// dedupSlug 去重键：默认（含 url_title）= 源URL+标题 哈希；"url" = 仅源 URL 哈希
-// （站点标题微调不会重复入库；注意切换 dedup_by 后既有文章会按新键被重新采集）
+// dedupSlug 去重键：默认 url_title = 源URL+标题 哈希；"url" = 仅源 URL；"title" = 仅标题
+// （源站链接带随机参数导致 URL 每次变化时用，站点标题需唯一；
+// 注意切换 dedup_by 后既有文章会按新键被重新采集）
 func (t *spiderTask) dedupSlug(link, title string) string {
-	if t.DedupBy == "url" {
+	switch t.DedupBy {
+	case "url":
 		return hashSlug(link, "")
+	case "title":
+		return hashSlug("", title)
 	}
 	return hashSlug(link, title)
 }

@@ -1,0 +1,56 @@
+{{block homeCarousel()}}
+{* 首页轮播：数据来自后台「配置 → 模板 → 轮播图」（MakeCarousel 插件自动填充或手动维护）；
+   EnableCarousel 开关关闭或列表为空时整体不渲染 *}
+{{carousel := Widget.Carousel()}}
+{{ if len(carousel) > 0 }}
+<link rel="stylesheet" href="/vendor/swiper-bundle.min.css">
+<style>
+    .w-carousel-swiper { aspect-ratio: 21/9; max-height: 460px; }
+    @media (max-width: 768px) { .w-carousel-swiper { aspect-ratio: 16/9; max-height: none; } }
+    .w-carousel-swiper .swiper-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .w-carousel-btn { --swiper-navigation-size: 20px; width: 40px; height: 40px; border-radius: 9999px; color: #fff; background: rgba(0, 0, 0, .35); backdrop-filter: blur(4px); transition: background .2s; }
+    .w-carousel-btn:hover { background: rgba(0, 0, 0, .55); }
+    .w-carousel .swiper-pagination-bullet { background: rgba(255, 255, 255, .65); opacity: 1; transition: all .2s; }
+    .w-carousel .swiper-pagination-bullet-active { background: #fff; width: 18px; border-radius: 9999px; }
+</style>
+<div class="w-carousel mb-10" aria-label="精选内容轮播">
+    <div class="swiper w-carousel-swiper overflow-hidden rounded-2xl border w-border shadow-lg">
+        <div class="swiper-wrapper">
+            {{ range i, v := carousel }}
+            {{ if v.Image != "" }}
+            <div class="swiper-slide">
+                <a class="block relative w-full h-full group" href="{{ v.Link }}">
+                    <img class="w-full h-full object-cover" src="{{ v.Image }}" alt="{{ v.Title }}" loading="{{ if i == 0 }}eager{{ else }}lazy{{ end }}" decoding="async" />
+                    {* 底部渐变遮罩 + 标题 *}
+                    <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 via-black/30 to-transparent pointer-events-none"></div>
+                    {{ if v.Title != "" }}
+                    <div class="absolute inset-x-0 bottom-0 px-5 py-4 flex items-center gap-2">
+                        <h3 class="text-base md:text-lg font-semibold text-white truncate drop-shadow">{{ v.Title }}</h3>
+                        <span class="ml-auto shrink-0 text-xs text-white/90 opacity-0 group-hover:opacity-100 transition-opacity">
+                            查看详情 <i class="fas fa-arrow-right ml-1" aria-hidden="true"></i>
+                        </span>
+                    </div>
+                    {{ end }}
+                </a>
+            </div>
+            {{ end }}
+            {{ end }}
+        </div>
+        <div class="swiper-pagination"></div>
+        <div class="swiper-button-prev w-carousel-btn" aria-label="上一张"></div>
+        <div class="swiper-button-next w-carousel-btn" aria-label="下一张"></div>
+    </div>
+</div>
+<script src="/vendor/swiper-bundle.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        new Swiper('.w-carousel-swiper', {
+            loop: true,
+            autoplay: { delay: 4500, disableOnInteraction: false, pauseOnMouseEnter: true },
+            pagination: { el: '.w-carousel .swiper-pagination', clickable: true },
+            navigation: { nextEl: '.w-carousel .swiper-button-next', prevEl: '.w-carousel .swiper-button-prev' },
+        });
+    });
+</script>
+{{ end }}
+{{end}}

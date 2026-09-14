@@ -133,10 +133,11 @@
             <a-radio-group v-model="t.dedup_by" type="button" size="small">
               <a-radio value="">URL+标题</a-radio>
               <a-radio value="url">仅 URL</a-radio>
+              <a-radio value="title">仅标题</a-radio>
             </a-radio-group>
             <template #extra>
               <a-typography-text type="secondary" class="text-xs">
-                默认 URL+标题 哈希；仅 URL 时站点标题微调不会重复入库。注意切换后既有文章会按新键被重新采集。
+                默认 URL+标题 哈希；源站链接带随机参数（每次抓取 URL 都变）导致重复入库时选「仅标题」；注意切换后既有文章会按新键被重新采集一次。
               </a-typography-text>
             </template>
           </a-form-item>

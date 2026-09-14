@@ -17,6 +17,17 @@ func (ext Extends) Get(key string) any {
 	return nil
 }
 
+// Set 写入键值：已存在则覆盖，否则追加（采集插件记录 source_url 等溯源信息用）
+func (ext *Extends) Set(key string, value any) {
+	for i, item := range *ext {
+		if item.Key == key {
+			(*ext)[i].Value = value
+			return
+		}
+	}
+	*ext = append(*ext, ExtendsItem{Key: key, Value: value})
+}
+
 func (ext *Extends) Scan(value interface{}) error {
 	s, _ := value.(string)
 	if len(s) == 0 {

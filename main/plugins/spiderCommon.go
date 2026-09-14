@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -94,6 +95,38 @@ func sameSite(a, b string) bool {
 func hashSlug(link, title string) string {
 	sum := sha1.Sum([]byte(strings.TrimSpace(link) + "|" + strings.TrimSpace(title)))
 	return hex.EncodeToString(sum[:8])
+}
+
+// isDuplicateKeyErr Create 撞唯一索引（跨进程并发下 ExistsSlug 与写入间的竞态窗口）：
+// 按已存在跳过处理，不算采集失败
+func isDuplicateKeyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "Duplicate entry") ||
+		strings.Contains(msg, "duplicate key")
+}
+
+// normalizeLinkKey 链接去重键：仅用于「同一次运行内」识别 URL 变体
+// （host 小写、去默认端口、去 #fragment、去尾斜杠）。保守归一，不改写入 slug 的原始链接，
+// 避免改变历史 slug 造成升级后已采集文章判重失效
+func normalizeLinkKey(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return strings.TrimSpace(raw)
+	}
+	u.Fragment = ""
+	u.RawFragment = ""
+	host := strings.ToLower(u.Host)
+	host = strings.TrimSuffix(host, ":80")
+	host = strings.TrimSuffix(host, ":443")
+	u.Host = host
+	if u.Path != "/" {
+		u.Path = strings.TrimSuffix(u.Path, "/")
+	}
+	return u.String()
 }
 
 // truncateRunes 按 rune 截断到 n 长度（数据库字段长度保护）
