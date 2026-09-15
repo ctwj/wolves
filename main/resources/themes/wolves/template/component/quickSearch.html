@@ -28,13 +28,16 @@
         .w-qs-chip.violet:hover { background: rgba(167, 139, 250, .22); }
         .w-qs-chip.cyan   { background: rgba(34, 211, 238, .12);  color: #67e8f9; border-color: rgba(34, 211, 238, .26); }
         .w-qs-chip.cyan:hover   { background: rgba(34, 211, 238, .22); }
+        /* 外链入口：新窗口打开 + ↗ 角标 */
+        .w-qs-ext-mark { font-size: .625rem; opacity: .7; }
     </style>
     <div class="w-qs-list">
         {{ range i, v := qs.Items }}
         {{ if v.Label != "" }}
-        <a href="{{ v.Href }}" class="w-qs-chip {{ v.Color }}" title="搜索：{{ v.Keyword }}">
+        <a href="{{ v.Href }}" class="w-qs-chip {{ v.Color }}{{ if v.External }} w-qs-ext{{ end }}" title="{{ if v.External }}打开：{{ v.Link }}{{ else }}搜索：{{ v.Keyword }}{{ end }}"{{ if v.External }} target="_blank" rel="noopener noreferrer"{{ end }}>
             {{ if v.Icon != "" }}<i class="{{ v.Icon }}" aria-hidden="true"></i>{{ end }}
             <span>{{ v.Label }}</span>
+            {{ if v.External }}<span class="w-qs-ext-mark" aria-hidden="true">↗</span>{{ end }}
         </a>
         {{ end }}
         {{ end }}

@@ -19,6 +19,7 @@ import (
 	"moss/infrastructure/support/log"
 	"net/url"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -59,7 +60,7 @@ type QuickSearchDataResult struct {
 }
 
 // QuickSearch 读取 QuickSearchLinks 插件配置并预构建搜索链接
-//（模板引擎无 URL 转义函数，Href 在此用 url.QueryEscape 生成）
+// （模板引擎无 URL 转义函数，Href 在此用 url.QueryEscape 生成）
 func (w *Widget) QuickSearch() (res QuickSearchDataResult) {
 	res.Title = "快速搜索"
 	item, err := pluginService.Plugin.Get("QuickSearchLinks")
@@ -72,10 +73,17 @@ func (w *Widget) QuickSearch() (res QuickSearchDataResult) {
 		res.Enable, res.Title, res.Items = provider.QuickSearchData()
 	}
 	for i := range res.Items {
-		if res.Items[i].Keyword == "" {
-			res.Items[i].Keyword = res.Items[i].Label
+		it := &res.Items[i]
+		// 直达链接优先：站内相对路径或外链原样使用；否则按搜索词构建
+		if it.Link != "" {
+			it.Href = it.Link
+			it.External = strings.HasPrefix(it.Link, "http://") || strings.HasPrefix(it.Link, "https://")
+			continue
 		}
-		res.Items[i].Href = "/search?keyword=" + url.QueryEscape(res.Items[i].Keyword)
+		if it.Keyword == "" {
+			it.Keyword = it.Label
+		}
+		it.Href = "/search?keyword=" + url.QueryEscape(it.Keyword)
 	}
 	return
 }
@@ -215,8 +223,8 @@ func (w *Widget) TagCloud() (res []coreEntity.Tag) {
 		}
 		// 按文章数量降序排序
 		type tagWithCount struct {
-			tag    coreEntity.Tag
-			count  int64
+			tag   coreEntity.Tag
+			count int64
 		}
 		var tagsWithCount []tagWithCount
 		for _, tag := range res {
