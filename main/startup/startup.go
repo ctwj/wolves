@@ -79,7 +79,7 @@ func initPlugins() {
 		plugins.NewBaiduCloudTransfer(),
 		plugins.NewQuarkCloudTransfer(),
 		// plugins.NewAISeoPlugin(),
-		plugins.NewExternalLinkPlugin(),
+		// plugins.NewExternalLinkPlugin(),
 		// plugins.NewDirectLinkDownload(),
 	)
 
