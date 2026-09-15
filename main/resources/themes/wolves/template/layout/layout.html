@@ -232,7 +232,7 @@
     </div>
 
     {{ if Page.Name == `index` }}
-    <section class="hero-bg w-hero-pt flex items-center relative overflow-hidden" style="height:14rem;">
+    <section class="hero-bg w-hero-pt flex items-center relative overflow-hidden" style="height:calc(var(--nav-h, 107px) + 2.5rem);">
         <div class="absolute inset-0 opacity-10">
             <div class="absolute top-20 left-10 w-96 h-96 bg-gradient-to-r from-primary-300 to-secondary-300 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
             <div class="absolute top-40 right-20 w-96 h-96 bg-gradient-to-r from-secondary-300 to-primary-300 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000"></div>
@@ -241,7 +241,7 @@
     </section>
     {{ end }}
 
-    <main id="main-content" class="{{ if Page.Name == `index` }}container mx-auto px-4 md:px-8 py-12 relative z-20{{ else }}w-main-pt pb-12 px-4 md:px-8{{ end }}" {{ if Page.Name == `index` }}style="margin-top:-5rem;"{{ end }} role="main">
+    <main id="main-content" class="{{ if Page.Name == `index` }}container mx-auto px-4 md:px-8 py-12 relative z-20{{ else }}w-main-pt pb-12 px-4 md:px-8{{ end }}" {{ if Page.Name == `index` }}style="margin-top:0;padding-top:0;"{{ end }} role="main">
         {{yield main()}}
     </main>
 
@@ -265,12 +265,6 @@
                     <i class="fas fa-rss mr-1"></i>Atom
                 </a>
                 {{ end }}
-                <a href="/download.html" class="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-primary-500/20 to-blue-500/20 text-primary-400 border border-primary-500/30 hover:border-primary-400 hover:text-primary-300 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary-500/20">
-                    <i class="fas fa-download mr-1.5 text-xs"></i>下载说明
-                </a>
-                <a href="/copyright.html" class="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-primary-500/20 to-blue-500/20 text-primary-400 border border-primary-500/30 hover:border-primary-400 hover:text-primary-300 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary-500/20">
-                    <i class="fas fa-shield-alt mr-1.5 text-xs"></i>版权说明
-                </a>
             </div>
 
             <div class="border-t border-gray-700 pt-6 pb-6">

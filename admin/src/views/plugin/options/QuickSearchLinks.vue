@@ -1,89 +1,103 @@
 <template>
 
-  <a-form-item label="启用">
-    <a-switch v-model="data.enable" />
-    <template #extra>
-      <a-typography-text type="secondary" class="text-xs">
-        开启后 wolves 主题首页（轮播下方）展示快捷搜索入口；其他主题不受影响。
-      </a-typography-text>
-    </template>
-  </a-form-item>
-  <a-form-item label="区块标题">
-    <a-input v-model="data.title" placeholder="如 快速搜索 / 热门搜索" allow-clear />
-    <template #extra>
-      <a-typography-text type="secondary" class="text-xs">当前版本前台已隐藏标题，仅作保留配置。</a-typography-text>
-    </template>
-  </a-form-item>
+  <a-tabs default-active-key="items" size="small">
+    <!-- ==================== 入口配置 ==================== -->
+    <a-tab-pane key="items" title="入口配置">
+      <a-form-item label="启用">
+        <a-switch v-model="data.enable" />
+        <template #extra>
+          <a-typography-text type="secondary" class="text-xs">
+            开启后 wolves 主题首页（轮播下方）展示快捷搜索入口；其他主题不受影响。效果预览见「前台预览」页签。
+          </a-typography-text>
+        </template>
+      </a-form-item>
 
-  <a-divider orientation="left" :margin="8">
-    快捷入口
-    <a-tag v-if="items.length" color="arcoblue" size="small" class="ml-1">{{ items.length }}</a-tag>
-  </a-divider>
+      <a-divider orientation="left" :margin="8">
+        快捷入口（每行一条）
+        <a-tag v-if="items.length" color="arcoblue" size="small" class="ml-1">{{ items.length }}</a-tag>
+      </a-divider>
 
-  <!-- 所见即所得预览：模拟 wolves 首页暗色环境 -->
-  <div class="pv-bar" role="status" aria-atomic="true">
-    <span class="pv-label"><icon-eye :size="14" /> 前台预览</span>
-    <div v-if="items.length" class="pv-list">
-      <span v-for="(it, i) in items" :key="i" class="pv-chip" :class="safeColor(it.color)">
-        <i v-if="safeIcon(it.icon)" :class="safeIcon(it.icon)" aria-hidden="true"></i>{{ it.label || '未填文案' }}
-      </span>
-    </div>
-    <span v-else class="pv-empty">暂无入口，点击下方「添加入口」</span>
-  </div>
+      <div class="qs-list-scroll">
+        <div v-for="(it, i) in items" :key="i" class="qs-row">
+        <span class="qs-seq">{{ i + 1 }}</span>
 
-  <div v-for="(it, i) in items" :key="i" class="qs-row">
-    <span class="qs-seq">{{ i + 1 }}</span>
-
-    <!-- 图标选择器：精选库网格 + 折叠自定义（格式校验） -->
-    <a-popover trigger="click" position="bottom" content-class="qs-icon-popover" :unmount-on-close="true">
-      <button type="button" class="qs-icon-btn" :aria-label="`选择第${i + 1}项图标`">
-        <i v-if="safeIcon(it.icon)" :class="safeIcon(it.icon)" aria-hidden="true"></i>
-        <i v-else class="fas fa-circle-question" aria-hidden="true"></i>
-      </button>
-      <template #content>
-        <div class="qs-icon-picker">
-          <input v-model="iconSearch" class="qs-icon-search" placeholder="搜索图标（中文名）" aria-label="搜索图标" />
-          <div v-for="g in filteredIconGroups" :key="g.name" class="qs-icon-group">
-            <div class="qs-icon-group-name">{{ g.name }}</div>
-            <div class="qs-icon-grid">
-              <button v-for="ic in g.items" :key="ic.cls" type="button" class="qs-icon-cell"
-                :class="{ active: it.icon === ic.cls }" :title="ic.name + '  ' + ic.cls" @click="it.icon = ic.cls; iconSearch = ''">
-                <i :class="ic.cls" aria-hidden="true"></i>
-              </button>
-            </div>
-          </div>
-          <div v-if="!filteredIconGroups.length" class="qs-icon-none">无匹配图标，可展开自定义输入</div>
+        <!-- 图标选择器：精选库网格 + 折叠自定义（格式校验） -->
+        <a-popover trigger="click" position="bottom" content-class="qs-icon-popover" :unmount-on-close="true">
+          <button type="button" class="qs-icon-btn" :aria-label="`选择第${i + 1}项图标`">
+            <i v-if="safeIcon(it.icon)" :class="safeIcon(it.icon)" aria-hidden="true"></i>
+            <i v-else class="fas fa-circle-question" aria-hidden="true"></i>
+          </button>
+          <template #content>
+            <div class="qs-icon-picker">
+              <input v-model="iconSearch" class="qs-icon-search" placeholder="搜索图标（中文名）" aria-label="搜索图标" />
+              <div v-for="g in filteredIconGroups" :key="g.name" class="qs-icon-group">
+                <div class="qs-icon-group-name">{{ g.name }}</div>
+                <div class="qs-icon-grid">
+                  <button v-for="ic in g.items" :key="ic.cls" type="button" class="qs-icon-cell"
+                    :class="{ active: it.icon === ic.cls }" :title="ic.name + '  ' + ic.cls" @click="it.icon = ic.cls; iconSearch = ''">
+                    <i :class="ic.cls" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </div>
+              <div v-if="!filteredIconGroups.length" class="qs-icon-none">无匹配图标，可展开自定义输入</div>
           <details class="qs-icon-custom">
             <summary>自定义 class（限 Font Awesome 格式）</summary>
             <input :value="it.icon" class="qs-icon-custom-input" placeholder="如 fas fa-bolt 或 fab fa-weixin"
               aria-label="自定义图标class" @input="onCustomIcon(it, $event)" />
             <div class="qs-icon-custom-tip">仅支持 Font Awesome 6 免费图标 class（fas/fab 前缀），完整列表见 fontawesome.com/icons（Free）</div>
           </details>
+          <button type="button" class="qs-icon-clear" @click="it.icon = ''">清除图标（纯文字胶囊）</button>
+            </div>
+          </template>
+        </a-popover>
+
+        <a-input v-model="it.label" aria-label="展示文案" placeholder="文案 如 微信多开" style="width: 120px" />
+        <a-radio-group :model-value="it.link ? 'link' : 'search'" type="button" size="mini"
+          @update:model-value="(v) => { if (v === 'link') { it.link = 'https://'; it.keyword = ''; } else { it.link = ''; } }">
+          <a-radio value="search">搜索</a-radio>
+          <a-radio value="link">链接</a-radio>
+        </a-radio-group>
+        <a-input v-if="!it.link" v-model="it.keyword" aria-label="搜索词" placeholder="搜索词 留空=文案" class="qs-flex-input" />
+        <a-input v-else v-model="it.link" aria-label="链接地址" placeholder="https:// 外链或 /category/xx" class="qs-flex-input" />
+
+        <!-- 安全色系：下拉选择（默认黑 + 12 个预设），可不配置 -->
+        <a-select :model-value="safeColor(it.color)" aria-label="色系" style="width: 104px" @update:model-value="(v) => it.color = v">
+          <a-option v-for="c in COLORS" :key="c.value" :value="c.value">
+            <span class="qs-option"><span class="qs-dot" :class="c.value || 'default'"></span>{{ c.name }}</span>
+          </a-option>
+        </a-select>
+
+        <span class="qs-ops">
+          <a-button type="text" size="mini" :disabled="i === 0" aria-label="上移" @click="move(i, -1)"><template #icon><icon-up :size="14" /></template></a-button>
+          <a-button type="text" size="mini" :disabled="i === items.length - 1" aria-label="下移" @click="move(i, 1)"><template #icon><icon-down :size="14" /></template></a-button>
+          <a-popconfirm content="删除该入口？" type="warning" @ok="items.splice(i, 1)">
+            <a-button type="text" size="mini" status="danger" aria-label="删除"><template #icon><icon-delete :size="14" /></template></a-button>
+          </a-popconfirm>
+        </span>
         </div>
-      </template>
-    </a-popover>
+      </div>
+      <a-button size="small" type="outline" @click="add">
+        <template #icon><icon-plus :size="14" /></template>
+        添加入口
+      </a-button>
+    </a-tab-pane>
 
-    <a-input v-model="it.label" aria-label="展示文案" placeholder="文案 如 微信多开" style="width: 150px" />
-    <a-input v-model="it.keyword" aria-label="搜索词" placeholder="搜索词 留空=文案" style="width: 130px" />
-
-    <!-- 安全色系：6 个预设圆点，不可自由输入 -->
-    <div class="qs-colors" role="radiogroup" :aria-label="`第${i + 1}项色系`">
-      <button v-for="c in COLORS" :key="c.value" type="button" class="qs-color-dot" :class="[c.value, { active: safeColor(it.color) === c.value }]"
-        role="radio" :aria-checked="safeColor(it.color) === c.value" :title="c.name" @click="it.color = c.value">
-        <i class="fas fa-check" aria-hidden="true"></i>
-      </button>
-    </div>
-
-    <a-button type="text" size="mini" :disabled="i === 0" aria-label="上移" @click="move(i, -1)"><template #icon><icon-up :size="14" /></template></a-button>
-    <a-button type="text" size="mini" :disabled="i === items.length - 1" aria-label="下移" @click="move(i, 1)"><template #icon><icon-down :size="14" /></template></a-button>
-    <a-popconfirm content="删除该入口？" type="warning" @ok="items.splice(i, 1)">
-      <a-button type="text" size="mini" status="danger" aria-label="删除"><template #icon><icon-delete :size="14" /></template></a-button>
-    </a-popconfirm>
-  </div>
-  <a-button size="small" type="outline" @click="add">
-    <template #icon><icon-plus :size="14" /></template>
-    添加入口
-  </a-button>
+    <!-- ==================== 前台预览 ==================== -->
+    <a-tab-pane key="preview" title="前台预览">
+      <a-typography-text type="secondary" class="text-xs block mb-2">
+        模拟 wolves 首页暗色环境实时渲染；保存后在插件弹窗点「确定」生效。
+      </a-typography-text>
+      <div class="pv-bar" role="status" aria-atomic="true">
+        <div v-if="items.length" class="pv-list">
+          <span v-for="(it, i) in items" :key="i" class="pv-chip" :class="safeColor(it.color)">
+            <i v-if="safeIcon(it.icon)" :class="safeIcon(it.icon)" aria-hidden="true"></i>{{ it.label || '未填文案' }}
+            <span v-if="it.link" class="pv-ext" aria-hidden="true">↗</span>
+          </span>
+        </div>
+        <span v-else class="pv-empty">暂无入口，回到「入口配置」添加</span>
+      </div>
+    </a-tab-pane>
+  </a-tabs>
 
 </template>
 
@@ -99,17 +113,24 @@ const items = computed(() => {
   return data.value.items;
 });
 
-// ===== 安全色系（与 wolves 前台 .w-qs-chip 六色一一对应，不开放自由输入）=====
+// ===== 安全色系（默认黑 + 12 个预设，与 wolves 前台一一对应，不开放自由输入）=====
 const COLORS = [
+  { value: "", name: "默认(黑)" },
   { value: "blue", name: "蓝" },
   { value: "green", name: "绿" },
   { value: "amber", name: "琥珀" },
+  { value: "orange", name: "橙" },
   { value: "pink", name: "粉" },
   { value: "violet", name: "紫" },
   { value: "cyan", name: "青" },
+  { value: "teal", name: "青绿" },
+  { value: "red", name: "红" },
+  { value: "indigo", name: "靛蓝" },
+  { value: "lime", name: "黄绿" },
+  { value: "slate", name: "灰" },
 ];
 function safeColor(v) {
-  return COLORS.some((c) => c.value === v) ? v : "blue";
+  return v === "" || COLORS.some((c) => c.value === v) ? v : "";
 }
 
 // ===== 精选图标库（Font Awesome 6 Free，前台加载同一 CDN 资源）=====
@@ -175,7 +196,8 @@ function onCustomIcon(it, e) {
 }
 
 function add() {
-  items.value.push({ label: "", keyword: "", icon: "fas fa-bolt", color: "blue" });
+  // 最简配置：只填文案即可用（图标/色系留空 → 前台默认黑色纯文字胶囊）
+  items.value.push({ label: "", keyword: "", link: "", icon: "", color: "" });
 }
 
 function move(i, offset) {
@@ -198,63 +220,64 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* ===== 前台预览条（模拟 wolves 暗色背景）===== */
-.pv-bar {
-  background: #0f172a;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 14px;
+/* ===== 单行条目 ===== */
+/* 超量滚动：条目多时不撑开弹窗，固定高度内滚动；「添加入口」按钮保持在容器外常显 */
+.qs-list-scroll { max-height: 46vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px; }
+.qs-list-scroll::-webkit-scrollbar { width: 6px; }
+.qs-list-scroll::-webkit-scrollbar-thumb { background: var(--color-border-2, #e5e6eb); border-radius: 9999px; }
+.qs-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: nowrap; }
+.qs-seq { color: var(--color-text-3, #86909c); font-size: 12px; width: 18px; text-align: center; flex-shrink: 0; }
+.qs-flex-input { flex: 1 1 140px; min-width: 120px; }
+.qs-ops { display: inline-flex; gap: 2px; flex-shrink: 0; }
+
+/* 图标按钮：实时渲染当前图标 */
+.qs-icon-btn {
+  width: 34px; height: 30px; border-radius: 6px; border: 1px solid var(--color-border-2, #e5e6eb);
+  background: var(--color-fill-1, #f7f8fa); cursor: pointer; color: var(--color-text-2, #4e5969);
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: background-color .2s, border-color .2s;
 }
-.pv-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  margin-bottom: 8px;
-}
+.qs-icon-btn:hover { background: var(--color-fill-3, #e5e6eb); }
+
+/* 下拉选项中的色点 */
+.qs-option { display: inline-flex; align-items: center; gap: 6px; }
+.qs-dot { width: 12px; height: 12px; border-radius: 9999px; display: inline-block; }
+.qs-dot.default { background: #1f2937; border: 1px solid rgba(255, 255, 255, .25); }
+.qs-dot.blue   { background: #3b82f6; }
+.qs-dot.green  { background: #34d399; }
+.qs-dot.amber  { background: #fbbf24; }
+.qs-dot.orange { background: #fb923c; }
+.qs-dot.pink   { background: #f472b6; }
+.qs-dot.violet { background: #a78bfa; }
+.qs-dot.cyan   { background: #22d3ee; }
+.qs-dot.teal   { background: #2dd4bf; }
+.qs-dot.red    { background: #f87171; }
+.qs-dot.indigo { background: #818cf8; }
+.qs-dot.lime   { background: #a3e635; }
+.qs-dot.slate  { background: #94a3b8; }
+
+/* ===== 前台预览（模拟 wolves 暗色背景）===== */
+.pv-bar { background: #0f172a; border-radius: 8px; padding: 20px 16px 16px; }
 .pv-list { display: flex; flex-wrap: wrap; gap: 10px 8px; }
 .pv-empty { font-size: 12px; color: rgba(255, 255, 255, 0.35); }
 .pv-chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 9999px;
   font-size: 13px; font-weight: 500; border: 1px solid transparent; line-height: 1.4;
+  background: rgba(0, 0, 0, .45); color: rgba(255, 255, 255, .78); border-color: rgba(255, 255, 255, .12);
 }
+.pv-ext { font-size: 10px; opacity: .7; }
 .pv-chip.blue   { background: rgba(59, 130, 246, .14);  color: #93c5fd; border-color: rgba(59, 130, 246, .28); }
 .pv-chip.green  { background: rgba(52, 211, 153, .12);  color: #6ee7b7; border-color: rgba(52, 211, 153, .26); }
 .pv-chip.amber  { background: rgba(251, 191, 36, .12);  color: #fcd34d; border-color: rgba(251, 191, 36, .26); }
+.pv-chip.orange { background: rgba(251, 146, 60, .12);  color: #fdba74; border-color: rgba(251, 146, 60, .26); }
 .pv-chip.pink   { background: rgba(244, 114, 182, .12); color: #f9a8d4; border-color: rgba(244, 114, 182, .26); }
 .pv-chip.violet { background: rgba(167, 139, 250, .12); color: #c4b5fd; border-color: rgba(167, 139, 250, .26); }
 .pv-chip.cyan   { background: rgba(34, 211, 238, .12);  color: #67e8f9; border-color: rgba(34, 211, 238, .26); }
-
-/* ===== 行布局 ===== */
-.qs-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.qs-seq { color: var(--color-text-3, #86909c); font-size: 12px; width: 20px; text-align: center; }
-
-/* 图标按钮：实时渲染当前图标 */
-.qs-icon-btn {
-  width: 36px; height: 32px; border-radius: 6px; border: 1px solid var(--color-border-2, #e5e6eb);
-  background: var(--color-fill-1, #f7f8fa); cursor: pointer; color: var(--color-text-2, #4e5969);
-  display: inline-flex; align-items: center; justify-content: center; transition: background-color .2s, border-color .2s;
-}
-.qs-icon-btn:hover { background: var(--color-fill-3, #e5e6eb); }
-
-/* ===== 安全色圆点 ===== */
-.qs-colors { display: inline-flex; gap: 6px; }
-.qs-color-dot {
-  width: 22px; height: 22px; border-radius: 9999px; border: 1px solid transparent; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; padding: 0;
-  transition: transform .2s, box-shadow .2s;
-}
-.qs-color-dot i { font-size: 10px; color: #fff; opacity: 0; }
-.qs-color-dot.active i { opacity: 1; }
-.qs-color-dot:hover { transform: scale(1.15); }
-.qs-color-dot.blue   { background: #3b82f6; }
-.qs-color-dot.green  { background: #34d399; }
-.qs-color-dot.amber  { background: #fbbf24; }
-.qs-color-dot.pink   { background: #f472b6; }
-.qs-color-dot.violet { background: #a78bfa; }
-.qs-color-dot.cyan   { background: #22d3ee; }
-.qs-color-dot.active { box-shadow: 0 0 0 2px var(--color-bg-2, #fff), 0 0 0 4px rgb(var(--primary-6, 22, 93, 255)); }
+.pv-chip.teal   { background: rgba(45, 212, 191, .12);  color: #5eead4; border-color: rgba(45, 212, 191, .26); }
+.pv-chip.red    { background: rgba(248, 113, 113, .12); color: #fca5a5; border-color: rgba(248, 113, 113, .26); }
+.pv-chip.indigo { background: rgba(129, 140, 248, .12); color: #a5b4fc; border-color: rgba(129, 140, 248, .26); }
+.pv-chip.lime   { background: rgba(163, 230, 53, .12);  color: #bef264; border-color: rgba(163, 230, 53, .26); }
+.pv-chip.slate  { background: rgba(148, 163, 184, .14); color: #cbd5e1; border-color: rgba(148, 163, 184, .26); }
 </style>
 
 <style>
@@ -284,4 +307,10 @@ onMounted(() => {
   font-family: ui-monospace, Consolas, monospace;
 }
 .qs-icon-custom-tip { font-size: 11px; color: var(--color-text-3, #86909c); margin-top: 4px; }
+.qs-icon-clear {
+  margin-top: 8px; width: 100%; padding: 6px 0; font-size: 12px; cursor: pointer;
+  border: 1px dashed var(--color-border-2, #e5e6eb); border-radius: 6px;
+  background: transparent; color: var(--color-text-3, #86909c); transition: color .15s, border-color .15s;
+}
+.qs-icon-clear:hover { color: rgb(var(--danger-6, 245, 63, 63)); border-color: rgb(var(--danger-6, 245, 63, 63)); }
 </style>

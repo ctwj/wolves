@@ -74,6 +74,10 @@ func (w *Widget) QuickSearch() (res QuickSearchDataResult) {
 	}
 	for i := range res.Items {
 		it := &res.Items[i]
+		// 色值兜底：空=默认黑（模板基础样式），非法非空值回退默认
+		if it.Color != "" && !quickSearchSafeColor(it.Color) {
+			it.Color = ""
+		}
 		// 直达链接优先：站内相对路径或外链原样使用；否则按搜索词构建
 		if it.Link != "" {
 			it.Href = it.Link
@@ -86,6 +90,17 @@ func (w *Widget) QuickSearch() (res QuickSearchDataResult) {
 		it.Href = "/search?keyword=" + url.QueryEscape(it.Keyword)
 	}
 	return
+}
+
+// quickSearchSafeColors 安全色集合（与 wolves 前台 .w-qs-chip 色系一一对应）
+var quickSearchSafeColors = map[string]struct{}{
+	"blue": {}, "green": {}, "amber": {}, "orange": {}, "pink": {}, "violet": {},
+	"cyan": {}, "teal": {}, "red": {}, "indigo": {}, "lime": {}, "slate": {},
+}
+
+func quickSearchSafeColor(v string) bool {
+	_, ok := quickSearchSafeColors[v]
+	return ok
 }
 
 // Menu 模板导航（带缓存，10分钟 TTL）

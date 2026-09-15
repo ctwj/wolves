@@ -9,10 +9,14 @@
         .w-quick-search { margin-bottom: 3rem; }
         /* soft-ui 胶囊：软阴影 + 200ms 过渡 + 可见焦点环；flex-wrap 自适应换行（避免裁剪） */
         .w-qs-list { display: flex; flex-wrap: wrap; gap: .625rem .5rem; }
+        /* 默认黑色（未配置色系时） */
         .w-qs-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .4rem .9rem; border-radius: 9999px;
             font-size: .8125rem; font-weight: 500; line-height: 1.4; border: 1px solid transparent; cursor: pointer;
             text-decoration: none;
+            background: rgba(0, 0, 0, .45); color: rgba(255, 255, 255, .78); border-color: rgba(255, 255, 255, .12);
             box-shadow: 0 2px 4px rgba(0, 0, 0, .25); transition: transform .2s, box-shadow .2s, background-color .2s, border-color .2s; }
+        .w-qs-chip:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0, 0, 0, .35);
+            background: rgba(0, 0, 0, .6); border-color: rgba(255, 255, 255, .22); }
         .w-qs-chip i { font-size: .8125rem; }
         .w-qs-chip:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
         .w-qs-chip:focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 2px; }
@@ -28,6 +32,18 @@
         .w-qs-chip.violet:hover { background: rgba(167, 139, 250, .22); }
         .w-qs-chip.cyan   { background: rgba(34, 211, 238, .12);  color: #67e8f9; border-color: rgba(34, 211, 238, .26); }
         .w-qs-chip.cyan:hover   { background: rgba(34, 211, 238, .22); }
+        .w-qs-chip.orange { background: rgba(251, 146, 60, .12);  color: #fdba74; border-color: rgba(251, 146, 60, .26); }
+        .w-qs-chip.orange:hover { background: rgba(251, 146, 60, .22); }
+        .w-qs-chip.teal   { background: rgba(45, 212, 191, .12);  color: #5eead4; border-color: rgba(45, 212, 191, .26); }
+        .w-qs-chip.teal:hover   { background: rgba(45, 212, 191, .22); }
+        .w-qs-chip.red    { background: rgba(248, 113, 113, .12); color: #fca5a5; border-color: rgba(248, 113, 113, .26); }
+        .w-qs-chip.red:hover    { background: rgba(248, 113, 113, .22); }
+        .w-qs-chip.indigo { background: rgba(129, 140, 248, .12); color: #a5b4fc; border-color: rgba(129, 140, 248, .26); }
+        .w-qs-chip.indigo:hover { background: rgba(129, 140, 248, .22); }
+        .w-qs-chip.lime   { background: rgba(163, 230, 53, .12);  color: #bef264; border-color: rgba(163, 230, 53, .26); }
+        .w-qs-chip.lime:hover   { background: rgba(163, 230, 53, .22); }
+        .w-qs-chip.slate  { background: rgba(148, 163, 184, .14); color: #cbd5e1; border-color: rgba(148, 163, 184, .26); }
+        .w-qs-chip.slate:hover  { background: rgba(148, 163, 184, .24); }
         /* 外链入口：新窗口打开 + ↗ 角标 */
         .w-qs-ext-mark { font-size: .625rem; opacity: .7; }
     </style>
